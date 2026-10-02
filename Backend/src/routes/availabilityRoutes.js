@@ -1,5 +1,5 @@
 import express from "express";
-import { body, param } from "express-validator";
+import { body, param, query } from "express-validator";
 import authMiddleware from "../middleware/authMiddleware.js";
 import validateRequest from "../middleware/validateRequest.js";
 import {
@@ -8,7 +8,10 @@ import {
   deleteAvailability,
   createOverride,
   getMyOverrides,
+  getOverrideImpact,
   deleteOverride,
+  removeOverrides,
+  getAvailabilityCalendar,
 } from "../controllers/availabilityController.js";
 
 const router = express.Router();
@@ -30,6 +33,16 @@ router.post(
 
 router.get("/", getMyAvailability);
 
+router.get(
+  "/calendar",
+  [
+    query("from").isISO8601().withMessage("Valid from date is required"),
+    query("to").isISO8601().withMessage("Valid to date is required"),
+  ],
+  validateRequest,
+  getAvailabilityCalendar
+);
+
 router.delete(
   "/:dayOfWeek",
   [param("dayOfWeek").isInt({ min: 0, max: 6 })],
@@ -41,13 +54,29 @@ router.post(
   "/override",
   [
     body("date").isISO8601().withMessage("Valid date is required"),
+    body("endDate").optional({ values: "falsy" }).isISO8601().withMessage("Valid end date is required"),
     body("type").isIn(["blocked", "custom"]).withMessage("type must be 'blocked' or 'custom'"),
+    body("reason").optional().isString().isLength({ max: 200 }),
+    body("cancelAffected").optional().isBoolean().toBoolean(),
+    body("notifyClients").optional().isBoolean().toBoolean(),
   ],
   validateRequest,
   createOverride
 );
 
 router.get("/override", getMyOverrides);
+
+router.get("/override/impact", getOverrideImpact);
+
+router.post(
+  "/override/remove",
+  [
+    body("ids").isArray({ min: 1, max: 100 }).withMessage("ids must be a non-empty list"),
+    body("ids.*").isMongoId().withMessage("Invalid override id"),
+  ],
+  validateRequest,
+  removeOverrides
+);
 
 router.delete(
   "/override/:id",

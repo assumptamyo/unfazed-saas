@@ -1,8 +1,20 @@
 import Availability from "../models/Availability.js";
 import AvailabilityOverride from "../models/AvailabilityOverride.js";
-import { dateFromKey, todayKey, timeToMinutes } from "../utils/dateUtils.js";
+import Session from "../models/Session.js";
+import { sendCancellationToClient } from "../services/emailService.js";
+import {
+  dateFromKey,
+  toDateKey,
+  todayKey,
+  addDaysToKey,
+  dayOfWeekFromKey,
+  timeToMinutes,
+  toDateTime,
+} from "../utils/dateUtils.js";
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const MAX_OVERRIDE_DAYS = 90;
+const MAX_CALENDAR_DAYS = 62;
 
 // @desc   Set/update weekly availability for a specific day
 // @route  POST /api/availability
@@ -74,36 +86,185 @@ export const deleteAvailability = async (req, res) => {
   }
 };
 
-// @desc   Create a one-time override (block a date, or set custom hours)
+// ---------- Overrides (time off & special hours) ----------
+
+const serializeOverride = (o) => ({
+  id: o._id,
+  date: toDateKey(o.date),
+  type: o.type,
+  startTime: o.startTime || null,
+  endTime: o.endTime || null,
+  reason: o.reason || "",
+});
+
+// Validates an override request (from body or query) and expands it into date keys.
+// Returns { error } or { keys, type, startTime, endTime, reason }.
+const parseOverrideInput = (input) => {
+  const { date, endDate, type, startTime, endTime, reason = "" } = input;
+  const fromKey = String(date || "").slice(0, 10);
+  const toKey = String(endDate || date || "").slice(0, 10);
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromKey) || !/^\d{4}-\d{2}-\d{2}$/.test(toKey)) {
+    return { error: "A valid date is required" };
+  }
+  if (!["blocked", "custom"].includes(type)) {
+    return { error: "type must be 'blocked' or 'custom'" };
+  }
+  if (toKey < fromKey) {
+    return { error: "The end date must be on or after the start date" };
+  }
+  if (fromKey < todayKey()) {
+    return { error: "You can't change availability for past dates" };
+  }
+  if (type === "custom") {
+    if (!TIME_PATTERN.test(startTime || "") || !TIME_PATTERN.test(endTime || "")) {
+      return { error: "Special hours need a start and end time (HH:mm)" };
+    }
+    if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
+      return { error: "End time must be after start time" };
+    }
+  }
+
+  const keys = [];
+  for (let key = fromKey; key <= toKey; key = addDaysToKey(key, 1)) {
+    keys.push(key);
+    if (keys.length > MAX_OVERRIDE_DAYS) {
+      return { error: `You can change at most ${MAX_OVERRIDE_DAYS} days at once` };
+    }
+  }
+
+  return {
+    keys,
+    type,
+    startTime: type === "custom" ? startTime : undefined,
+    endTime: type === "custom" ? endTime : undefined,
+    reason: String(reason).trim().slice(0, 200),
+  };
+};
+
+// Confirmed, not-yet-started sessions that the override would clash with.
+// Blocking clashes with every session; special hours only with sessions outside the new window.
+const findAffectedSessions = async (therapistId, { keys, type, startTime, endTime }) => {
+  const sessions = await Session.find({
+    therapist: therapistId,
+    status: "confirmed",
+    date: { $in: keys.map(dateFromKey) },
+  })
+    .populate("client", "name email")
+    .sort({ date: 1, startTime: 1 });
+
+  const now = new Date();
+  return sessions.filter((s) => {
+    if (toDateTime(s.date, s.startTime) <= now) return false;
+    if (type === "blocked") return true;
+    return (
+      timeToMinutes(s.startTime) < timeToMinutes(startTime) ||
+      timeToMinutes(s.endTime) > timeToMinutes(endTime)
+    );
+  });
+};
+
+const serializeAffected = (s) => ({
+  id: s._id,
+  date: toDateKey(s.date),
+  startTime: s.startTime,
+  endTime: s.endTime,
+  client: s.client ? { name: s.client.name, email: s.client.email } : null,
+});
+
+// @desc   Preview which booked sessions an override would affect
+// @route  GET /api/availability/override/impact?date&endDate&type&startTime&endTime
+export const getOverrideImpact = async (req, res) => {
+  try {
+    const parsed = parseOverrideInput(req.query);
+    if (parsed.error) {
+      return res.status(400).json({ message: parsed.error });
+    }
+
+    const affected = await findAffectedSessions(req.therapist._id, parsed);
+    return res.status(200).json({
+      days: parsed.keys.length,
+      affected: affected.map(serializeAffected),
+    });
+  } catch (error) {
+    console.error("Override impact error:", error.message);
+    return res.status(500).json({ message: "Server error while checking bookings" });
+  }
+};
+
+// @desc   Block a date / date range, or set special hours, optionally cancelling
+//         sessions that clash with it
 // @route  POST /api/availability/override
 export const createOverride = async (req, res) => {
   try {
     const therapistId = req.therapist._id;
-    const { date, type, startTime, endTime, reason } = req.body;
+    const { cancelAffected = false, notifyClients = true } = req.body;
 
-    if (type === "custom") {
-      if (!TIME_PATTERN.test(startTime || "") || !TIME_PATTERN.test(endTime || "")) {
-        return res.status(400).json({ message: "Custom hours need a start and end time (HH:mm)" });
-      }
-      if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
-        return res.status(400).json({ message: "End time must be after start time" });
+    const parsed = parseOverrideInput(req.body);
+    if (parsed.error) {
+      return res.status(400).json({ message: parsed.error });
+    }
+
+    // Find clashes before saving, while the sessions are still confirmed
+    const affected = cancelAffected ? await findAffectedSessions(therapistId, parsed) : [];
+
+    await AvailabilityOverride.bulkWrite(
+      parsed.keys.map((key) => ({
+        updateOne: {
+          filter: { therapist: therapistId, date: dateFromKey(key) },
+          update: {
+            $set: {
+              type: parsed.type,
+              startTime: parsed.startTime,
+              endTime: parsed.endTime,
+              reason: parsed.reason,
+            },
+          },
+          upsert: true,
+        },
+      }))
+    );
+
+    let emailsSent = 0;
+    const now = new Date();
+    for (const session of affected) {
+      session.status = "cancelled";
+      session.statusUpdatedAt = now;
+      session.cancellation = {
+        cancelledAt: now,
+        cancelledBy: "therapist",
+        reason: parsed.reason,
+      };
+      await session.save();
+
+      if (notifyClients && session.client?.email) {
+        try {
+          await sendCancellationToClient(
+            session.client.email,
+            session.client.name,
+            req.therapist.name,
+            session.date,
+            session.startTime,
+            session.endTime,
+            parsed.reason
+          );
+          emailsSent += 1;
+        } catch (emailError) {
+          console.error("Override cancellation email failed:", emailError.message);
+        }
       }
     }
 
-    const override = await AvailabilityOverride.findOneAndUpdate(
-      { therapist: therapistId, date: dateFromKey(date.slice(0, 10)) },
-      {
-        type,
-        startTime: type === "custom" ? startTime : undefined,
-        endTime: type === "custom" ? endTime : undefined,
-        reason: reason || "",
-      },
-      { new: true, upsert: true, runValidators: true }
-    );
+    const overrides = await AvailabilityOverride.find({
+      therapist: therapistId,
+      date: { $in: parsed.keys.map(dateFromKey) },
+    }).sort({ date: 1 });
 
     return res.status(200).json({
-      message: "Override saved successfully",
-      override,
+      message: parsed.type === "blocked" ? "Time off saved" : "Special hours saved",
+      overrides: overrides.map(serializeOverride),
+      cancelledSessions: affected.length,
+      emailsSent,
     });
   } catch (error) {
     console.error("Create override error:", error.message);
@@ -111,7 +272,7 @@ export const createOverride = async (req, res) => {
   }
 };
 
-// @desc   Get all overrides for the logged-in therapist (upcoming only)
+// @desc   Get all overrides for the logged-in therapist (today onwards)
 // @route  GET /api/availability/override
 export const getMyOverrides = async (req, res) => {
   try {
@@ -120,7 +281,7 @@ export const getMyOverrides = async (req, res) => {
       date: { $gte: dateFromKey(todayKey()) },
     }).sort({ date: 1 });
 
-    return res.status(200).json({ overrides });
+    return res.status(200).json({ overrides: overrides.map(serializeOverride) });
   } catch (error) {
     console.error("Get overrides error:", error.message);
     return res.status(500).json({ message: "Server error while fetching overrides" });
@@ -148,5 +309,87 @@ export const deleteOverride = async (req, res) => {
   } catch (error) {
     console.error("Delete override error:", error.message);
     return res.status(500).json({ message: "Server error while removing override" });
+  }
+};
+
+// @desc   Delete several overrides at once (e.g. a whole holiday range)
+// @route  POST /api/availability/override/remove
+export const removeOverrides = async (req, res) => {
+  try {
+    const { deletedCount } = await AvailabilityOverride.deleteMany({
+      _id: { $in: req.body.ids },
+      therapist: req.therapist._id,
+    });
+    return res.status(200).json({ message: "Removed", removed: deletedCount });
+  } catch (error) {
+    console.error("Remove overrides error:", error.message);
+    return res.status(500).json({ message: "Server error while removing overrides" });
+  }
+};
+
+// @desc   Day-by-day view of availability, overrides and bookings for a date range
+// @route  GET /api/availability/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD
+export const getAvailabilityCalendar = async (req, res) => {
+  try {
+    const therapistId = req.therapist._id;
+    const fromKey = req.query.from.slice(0, 10);
+    let toKey = req.query.to.slice(0, 10);
+    if (toKey < fromKey) toKey = fromKey;
+    if (addDaysToKey(fromKey, MAX_CALENDAR_DAYS) < toKey) {
+      toKey = addDaysToKey(fromKey, MAX_CALENDAR_DAYS);
+    }
+
+    const range = { $gte: dateFromKey(fromKey), $lte: dateFromKey(toKey) };
+    const [weekly, overrides, sessions] = await Promise.all([
+      Availability.find({ therapist: therapistId, isActive: true }),
+      AvailabilityOverride.find({ therapist: therapistId, date: range }),
+      Session.find({ therapist: therapistId, date: range, status: { $ne: "cancelled" } })
+        .populate("client", "name")
+        .sort({ startTime: 1 }),
+    ]);
+
+    const overrideMap = Object.fromEntries(overrides.map((o) => [toDateKey(o.date), o]));
+    const sessionMap = {};
+    sessions.forEach((s) => {
+      const key = toDateKey(s.date);
+      (sessionMap[key] ||= []).push({
+        id: s._id,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        status: s.status,
+        clientName: s.client?.name || "Unknown",
+      });
+    });
+
+    const days = [];
+    for (let key = fromKey; key <= toKey; key = addDaysToKey(key, 1)) {
+      const template = weekly.find((t) => t.dayOfWeek === dayOfWeekFromKey(key));
+      const override = overrideMap[key];
+
+      let kind = "off";
+      let hours = null;
+      if (override?.type === "blocked") {
+        kind = "blocked";
+      } else if (override?.type === "custom") {
+        kind = "custom";
+        hours = { start: override.startTime, end: override.endTime };
+      } else if (template) {
+        kind = "working";
+        hours = { start: template.startTime, end: template.endTime };
+      }
+
+      days.push({
+        date: key,
+        kind,
+        hours,
+        override: override ? serializeOverride(override) : null,
+        sessions: sessionMap[key] || [],
+      });
+    }
+
+    return res.status(200).json({ days });
+  } catch (error) {
+    console.error("Availability calendar error:", error.message);
+    return res.status(500).json({ message: "Server error while loading calendar" });
   }
 };
