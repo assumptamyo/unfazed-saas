@@ -51,6 +51,12 @@ const clientSchema = new mongoose.Schema(
         default: "",
       },
     },
+    // Set when the therapist archives the client; archived clients are hidden
+    // from lists but their history is kept
+    archivedAt: {
+      type: Date,
+      default: null,
+    },
     consent: {
       agreed: {
         type: Boolean,

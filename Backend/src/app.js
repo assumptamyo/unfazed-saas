@@ -5,6 +5,7 @@ import errorHandler from "./middleware/errorhandler.js";
 import therapistRoutes from "./routes/therapistRoutes.js";
 import availabilityRoutes from "./routes/availabilityRoutes.js";
 import clientRoutes from "./routes/clientRoutes.js";
+import appointmentRoutes from "./routes/appointmentRoutes.js";
 
 
 const app = express();
@@ -24,6 +25,8 @@ app.use("/api/availability", availabilityRoutes);
 app.use("/uploads", express.static("uploads"));
 
 app.use("/api/clients", clientRoutes);
+
+app.use("/api/appointments", appointmentRoutes);
 
 app.use(errorHandler);
 

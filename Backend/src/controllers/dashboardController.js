@@ -1,17 +1,21 @@
 import Client from "../models/Client.js";
 import Session from "../models/Session.js";
+import { dateFromKey, todayKey, addDaysToKey } from "../utils/dateUtils.js";
+
+const SERVER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 import Availability from "../models/Availability.js";
 
 export const getDashboardStats = async (req, res) => {
   try {
     const therapistId = req.therapist._id;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = dateFromKey(todayKey());
 
     const weekFromNow = new Date(today);
     weekFromNow.setDate(weekFromNow.getDate() + 7);
 
-    const fourteenDaysAgo = new Date(today);
+    // Bookings are counted by when they were made (createdAt), in server-local days
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setHours(0, 0, 0, 0);
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
 
     const [
@@ -24,7 +28,7 @@ export const getDashboardStats = async (req, res) => {
       upcomingList,
       recentClients,
     ] = await Promise.all([
-      Client.countDocuments({ therapist: therapistId }),
+      Client.countDocuments({ therapist: therapistId, archivedAt: null }),
       Session.countDocuments({
         therapist: therapistId,
         date: { $gte: today },
@@ -45,7 +49,9 @@ export const getDashboardStats = async (req, res) => {
         },
         {
           $group: {
-            _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+            _id: {
+              $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: SERVER_TZ },
+            },
             count: { $sum: 1 },
           },
         },
@@ -62,7 +68,7 @@ export const getDashboardStats = async (req, res) => {
         .sort({ date: 1, startTime: 1 })
         .limit(8)
         .populate("client", "name email phone"),
-      Client.find({ therapist: therapistId })
+      Client.find({ therapist: therapistId, archivedAt: null })
         .sort({ createdAt: -1 })
         .limit(6),
     ]);
@@ -72,12 +78,7 @@ export const getDashboardStats = async (req, res) => {
 
     const bookingsOverTime = [];
     for (let i = 0; i < 14; i++) {
-      const d = new Date(fourteenDaysAgo);
-      d.setDate(d.getDate() + i);
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      const key = `${year}-${month}-${day}`;
+      const key = addDaysToKey(todayKey(), i - 13);
       bookingsOverTime.push({ date: key, count: bookingsMap[key] || 0 });
     }
 

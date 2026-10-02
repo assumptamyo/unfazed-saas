@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { format, parseISO, isToday, isTomorrow, differenceInCalendarDays } from "date-fns";
 
 const formatDayLabel = (dateStr) => {
@@ -44,9 +45,9 @@ const UpcomingAppointments = ({ appointments = [] }) => {
         <h3 className="text-[#2B221E] text-lg" style={{ fontFamily: "Literata, serif" }}>
           Upcoming Sessions
         </h3>
-        <span className="text-xs bg-gradient-to-r from-[#FF9E4C] to-[#D96B00] text-white px-3 py-1 rounded-full font-semibold shadow-sm">
-          {appointments.length}
-        </span>
+        <Link to="/therapist/appointments" className="text-xs text-[#D96B00] font-medium hover:underline">
+          Manage all →
+        </Link>
       </div>
 
       <div className="space-y-2.5">

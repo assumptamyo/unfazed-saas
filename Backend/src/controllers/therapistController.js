@@ -36,9 +36,7 @@ export const getTherapistSlots = async (req, res) => {
       return res.status(404).json({ message: "Therapist not found" });
     }
 
-    const daysAhead = req.query.days ? Number(req.query.days) : 14;
-
-    const slots = await generateAvailableSlots(therapist._id, daysAhead);
+    const slots = await generateAvailableSlots(therapist._id, { days: req.query.days });
 
     return res.status(200).json({ slots });
   } catch (error) {

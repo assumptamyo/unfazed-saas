@@ -22,19 +22,6 @@ router.get("/dashboard-stats", authMiddleware, getDashboardStats);
 
 router.get("/:slug/slots", getTherapistSlots);
 
-router.post(
-  "/:slug/book",
-  [
-    body("clientName").trim().notEmpty().withMessage("Name is required"),
-    body("clientEmail").isEmail().withMessage("A valid email is required"),
-    body("date").isISO8601().withMessage("Valid date is required"),
-    body("startTime").matches(/^([01]\d|2[0-3]):([0-5]\d)$/).withMessage("Invalid startTime"),
-    body("endTime").matches(/^([01]\d|2[0-3]):([0-5]\d)$/).withMessage("Invalid endTime"),
-  ],
-  validateRequest,
-  bookSession
-);
-
 router.get("/:slug", getPublicProfile);
 
 router.post(
@@ -44,8 +31,7 @@ router.post(
     body("clientEmail").isEmail().withMessage("A valid email is required"),
     body("date").isISO8601().withMessage("Valid date is required"),
     body("startTime").matches(/^([01]\d|2[0-3]):([0-5]\d)$/).withMessage("Invalid startTime"),
-    body("endTime").matches(/^([01]\d|2[0-3]):([0-5]\d)$/).withMessage("Invalid endTime"),
-    body("consentAgreed").isBoolean().withMessage("Consent confirmation is required"),
+    body("consentAgreed").isBoolean({ strict: true }).withMessage("Consent confirmation is required"),
   ],
   validateRequest,
   bookSession

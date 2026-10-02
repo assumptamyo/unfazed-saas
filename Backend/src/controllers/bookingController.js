@@ -1,6 +1,8 @@
 import Client from "../models/Client.js";
 import Session from "../models/Session.js";
 import Therapist from "../models/Therapist.js";
+import { findAvailableSlot } from "../services/slotService.js";
+import { dateFromKey } from "../utils/dateUtils.js";
 import {
   sendBookingConfirmationToClient,
   sendNewBookingNotificationToTherapist,
@@ -17,7 +19,6 @@ export const bookSession = async (req, res) => {
       clientPhone,
       date,
       startTime,
-      endTime,
       notes,
       age,
       gender,
@@ -26,9 +27,22 @@ export const bookSession = async (req, res) => {
       consentAgreed,
     } = req.body;
 
+    if (consentAgreed !== true) {
+      return res.status(400).json({ message: "Consent is required to book a session" });
+    }
+
     const therapist = await Therapist.findOne({ slug });
     if (!therapist) {
       return res.status(404).json({ message: "Therapist not found" });
+    }
+
+    // Only accept times that are genuinely open on the therapist's calendar
+    const dateKey = date.slice(0, 10);
+    const slot = await findAvailableSlot(therapist._id, dateKey, startTime);
+    if (!slot) {
+      return res.status(409).json({
+        message: "That time is no longer available. Please choose another slot.",
+      });
     }
 
     let client = await Client.findOne({
@@ -50,19 +64,20 @@ export const bookSession = async (req, res) => {
           },
           presentingConcern: presentingConcern || "",
         },
-        consent: {
-          agreed: !!consentAgreed,
-          agreedAt: consentAgreed ? new Date() : undefined,
-        },
+        consent: { agreed: true, agreedAt: new Date() },
       });
+    } else {
+      if (!client.consent?.agreed) client.consent = { agreed: true, agreedAt: new Date() };
+      client.archivedAt = null; // booking again brings an archived client back
+      await client.save();
     }
 
     const session = await Session.create({
       therapist: therapist._id,
       client: client._id,
-      date,
-      startTime,
-      endTime,
+      date: dateFromKey(dateKey),
+      startTime: slot.startTime,
+      endTime: slot.endTime,
       notes: notes || "",
     });
 
@@ -72,18 +87,18 @@ export const bookSession = async (req, res) => {
         client.email,
         client.name,
         therapist.name,
-        date,
-        startTime,
-        endTime
+        dateKey,
+        slot.startTime,
+        slot.endTime
       );
       await sendNewBookingNotificationToTherapist(
         therapist.email,
         therapist.name,
         client.name,
         client.email,
-        date,
-        startTime,
-        endTime
+        dateKey,
+        slot.startTime,
+        slot.endTime
       );
     } catch (emailError) {
       console.error("Booking email failed:", emailError.message);

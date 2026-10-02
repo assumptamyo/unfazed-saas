@@ -20,6 +20,11 @@ const icons = {
       <line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
     </svg>
   ),
+  appointments: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15.5 14" />
+    </svg>
+  ),
   notes: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -94,7 +99,7 @@ const Sidebar = ({ open, onClose }) => {
       )}
 
       <aside
-        className={`fixed md:static top-0 left-0 h-full md:h-screen w-72 bg-[#FBF8F3] border-r border-[#E5DCD3] flex flex-col p-6 z-40 transition-transform duration-300 shadow-sm md:shadow-none ${
+        className={`fixed md:sticky top-0 left-0 h-full md:h-screen w-72 shrink-0 bg-[#FBF8F3] border-r border-[#E5DCD3] flex flex-col p-6 z-40 transition-transform duration-300 shadow-sm md:shadow-none ${
           open ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
         style={{ fontFamily: "Inter, sans-serif" }}
@@ -130,8 +135,14 @@ const Sidebar = ({ open, onClose }) => {
                 active={path === "/therapist/dashboard"}
               />
               <NavItem
+                icon={icons.appointments}
+                label="Appointments"
+                to="/therapist/appointments"
+                active={path === "/therapist/appointments"}
+              />
+              <NavItem
                 icon={icons.schedule}
-                label="Appointments & Schedule"
+                label="Availability"
                 to="/therapist/schedule"
                 active={path === "/therapist/schedule"}
               />

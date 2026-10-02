@@ -1,5 +1,8 @@
 import Availability from "../models/Availability.js";
 import AvailabilityOverride from "../models/AvailabilityOverride.js";
+import { dateFromKey, todayKey, timeToMinutes } from "../utils/dateUtils.js";
+
+const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 // @desc   Set/update weekly availability for a specific day
 // @route  POST /api/availability
@@ -7,6 +10,12 @@ export const setAvailability = async (req, res) => {
   try {
     const therapistId = req.therapist._id;
     const { dayOfWeek, startTime, endTime, sessionDuration, bufferMinutes } = req.body;
+
+    if (timeToMinutes(endTime) - timeToMinutes(startTime) < Number(sessionDuration)) {
+      return res.status(400).json({
+        message: "End time must be after start time, with room for at least one session",
+      });
+    }
 
     // Upsert: if this day already has a rule, replace it; otherwise create one
     const availability = await Availability.findOneAndUpdate(
@@ -72,9 +81,23 @@ export const createOverride = async (req, res) => {
     const therapistId = req.therapist._id;
     const { date, type, startTime, endTime, reason } = req.body;
 
+    if (type === "custom") {
+      if (!TIME_PATTERN.test(startTime || "") || !TIME_PATTERN.test(endTime || "")) {
+        return res.status(400).json({ message: "Custom hours need a start and end time (HH:mm)" });
+      }
+      if (timeToMinutes(endTime) <= timeToMinutes(startTime)) {
+        return res.status(400).json({ message: "End time must be after start time" });
+      }
+    }
+
     const override = await AvailabilityOverride.findOneAndUpdate(
-      { therapist: therapistId, date },
-      { type, startTime, endTime, reason },
+      { therapist: therapistId, date: dateFromKey(date.slice(0, 10)) },
+      {
+        type,
+        startTime: type === "custom" ? startTime : undefined,
+        endTime: type === "custom" ? endTime : undefined,
+        reason: reason || "",
+      },
       { new: true, upsert: true, runValidators: true }
     );
 
@@ -94,7 +117,7 @@ export const getMyOverrides = async (req, res) => {
   try {
     const overrides = await AvailabilityOverride.find({
       therapist: req.therapist._id,
-      date: { $gte: new Date() },
+      date: { $gte: dateFromKey(todayKey()) },
     }).sort({ date: 1 });
 
     return res.status(200).json({ overrides });

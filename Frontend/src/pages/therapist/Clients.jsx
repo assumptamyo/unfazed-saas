@@ -13,6 +13,7 @@ const SearchIcon = () => (
 const statusStyles = {
   active: "bg-[#EEF3F0] text-[#4F7161]",
   inactive: "bg-[#F3EFEA] text-[#8A7A6D]",
+  archived: "bg-[#ECE7E1] text-[#6B5B52]",
 };
 
 const Clients = () => {
@@ -83,6 +84,7 @@ const Clients = () => {
             <option value="">All statuses</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
+            <option value="archived">Archived</option>
           </select>
 
           <select
@@ -104,7 +106,11 @@ const Clients = () => {
             </div>
           ) : sortedClients.length === 0 ? (
             <div className="p-10 text-center text-[#6B5B52] text-sm">
-              {search || statusFilter ? "No clients match your filters." : "No clients yet."}
+              {statusFilter === "archived"
+                ? "No archived clients."
+                : search || statusFilter
+                  ? "No clients match your filters."
+                  : "No clients yet."}
             </div>
           ) : (
             <table className="w-full text-sm">
@@ -138,15 +144,15 @@ const Clients = () => {
                     </td>
                     <td className="px-5 py-3.5 text-[#6B5B52] hidden sm:table-cell">
                       {client.lastSessionDate
-                        ? format(parseISO(client.lastSessionDate), "MMM d, yyyy")
+                        ? format(parseISO(client.lastSessionDate.slice(0, 10)), "MMM d, yyyy")
                         : "—"}
                     </td>
                     <td className="px-5 py-3.5 text-[#6B5B52] hidden md:table-cell">
                       {client.totalSessions}
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusStyles[client.status]}`}>
-                        {client.status}
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusStyles[client.archivedAt ? "archived" : client.status]}`}>
+                        {client.archivedAt ? "archived" : client.status}
                       </span>
                     </td>
                     <td className="px-5 py-3.5 hidden lg:table-cell">

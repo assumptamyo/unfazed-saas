@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
-import { getClientById } from "../../api/clientApi";
+import { getClientById, restoreClient } from "../../api/clientApi";
 import DashboardLayout from "../../components/dashboard/DashboardLayout";
+import { ArchiveClientModal, DeleteClientModal } from "../../components/clients/ClientActionModals";
+import { useToast } from "../../context/toastContext";
+import { apiError } from "../../components/appointments/appointmentUtils";
 
 const statusStyles = {
   confirmed: "bg-[#EAF6EC] text-[#2F6B3A]",
@@ -23,6 +26,11 @@ const ClientDetail = () => {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const navigate = useNavigate();
+  const { notify } = useToast();
 
   useEffect(() => {
     const load = async () => {
@@ -30,14 +38,14 @@ const ClientDetail = () => {
         const res = await getClientById(id);
         setClient(res.data.client);
         setSessions(res.data.sessions);
-      } catch (err) {
+      } catch {
         setNotFound(true);
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, [id]);
+  }, [id, reloadKey]);
 
   if (loading) {
     return (
@@ -60,6 +68,20 @@ const ClientDetail = () => {
   }
 
   const initial = client.name.charAt(0).toUpperCase();
+  const now = new Date();
+  const upcomingCount = sessions.filter(
+    (s) => s.status === "confirmed" && parseISO(`${s.date.slice(0, 10)}T${s.startTime}`) > now
+  ).length;
+
+  const handleRestore = async () => {
+    try {
+      await restoreClient(client._id);
+      notify(`${client.name} restored`);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      notify(apiError(err), { type: "error" });
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -89,10 +111,35 @@ const ClientDetail = () => {
               {client.phone && <p className="text-sm text-[#A89C8F]">{client.phone}</p>}
             </div>
           </div>
-          <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${client.status === "active" ? "bg-[#EEF3F0] text-[#4F7161]" : "bg-[#F3EFEA] text-[#8A7A6D]"}`}>
-            {client.status}
-          </span>
+          <div className="flex items-center gap-2">
+            {client.archivedAt ? (
+              <span className="text-xs px-3 py-1.5 rounded-full font-medium bg-[#ECE7E1] text-[#6B5B52]">archived</span>
+            ) : (
+              <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${client.status === "active" ? "bg-[#EEF3F0] text-[#4F7161]" : "bg-[#F3EFEA] text-[#8A7A6D]"}`}>
+                {client.status}
+              </span>
+            )}
+            {!client.archivedAt && (
+              <button
+                onClick={() => setArchiveOpen(true)}
+                className="text-xs font-medium px-3 py-1.5 rounded-full border border-[#E5DCD3] text-[#6B5B52] hover:border-[#2B221E]/30 hover:text-[#2B221E] transition"
+              >
+                Archive
+              </button>
+            )}
+          </div>
         </div>
+
+        {client.archivedAt && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#F3EFEA] border border-[#E5DCD3] px-5 py-3.5 mb-6">
+            <p className="text-sm text-[#6B5B52]">
+              Archived on {format(parseISO(client.archivedAt), "MMM d, yyyy")}. Hidden from your client list; history is kept.
+            </p>
+            <button onClick={handleRestore} className="text-sm font-semibold text-[#D96B00] hover:underline">
+              Restore client
+            </button>
+          </div>
+        )}
 
         {/* Intake info */}
         {(client.intake?.demographics?.age || client.intake?.presentingConcern) && (
@@ -147,7 +194,7 @@ const ClientDetail = () => {
                 <div key={s._id} className="flex items-center justify-between py-3">
                   <div>
                     <p className="text-sm font-medium text-[#2B221E]">
-                      {format(parseISO(s.date), "EEE, MMM d, yyyy")}
+                      {format(parseISO(s.date.slice(0, 10)), "EEE, MMM d, yyyy")}
                     </p>
                     <p className="text-xs text-[#A89C8F]">{s.startTime}–{s.endTime}</p>
                   </div>
@@ -159,7 +206,50 @@ const ClientDetail = () => {
             </div>
           )}
         </div>
+
+        {/* Danger zone */}
+        <div className="mt-6 rounded-3xl border border-[#F5C2BE]/70 p-6 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-[#2B221E]">Delete client permanently</p>
+            <p className="text-xs text-[#8A7A6D] mt-0.5">
+              Removes this client and all {sessions.length} of their sessions. This can't be undone.
+            </p>
+          </div>
+          <button
+            onClick={() => setDeleteOpen(true)}
+            className="text-sm font-semibold px-4 py-2 rounded-full border border-[#F5C2BE] text-[#9C3B2E] hover:bg-[#FDECEA] transition"
+          >
+            Delete…
+          </button>
+        </div>
       </div>
+
+      {archiveOpen && (
+        <ArchiveClientModal
+          client={client}
+          upcomingCount={upcomingCount}
+          onClose={() => setArchiveOpen(false)}
+          onDone={({ cancelledSessions }) => {
+            setArchiveOpen(false);
+            notify(
+              `${client.name} archived${cancelledSessions ? ` · ${cancelledSessions} session${cancelledSessions > 1 ? "s" : ""} cancelled` : ""}`
+            );
+            setReloadKey((k) => k + 1);
+          }}
+        />
+      )}
+
+      {deleteOpen && (
+        <DeleteClientModal
+          client={client}
+          sessionCount={sessions.length}
+          onClose={() => setDeleteOpen(false)}
+          onDone={() => {
+            notify(`${client.name} was permanently deleted`, { type: "info" });
+            navigate("/therapist/clients");
+          }}
+        />
+      )}
     </DashboardLayout>
   );
 };

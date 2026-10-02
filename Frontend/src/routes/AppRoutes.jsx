@@ -12,6 +12,7 @@ import Schedule from "../pages/therapist/Schedule";
 import EditProfile from "../pages/therapist/EditProfile";
 import Clients from "../pages/therapist/Clients";
 import ClientDetail from "../pages/therapist/ClientDetail";
+import Appointments from "../pages/therapist/Appointments";
 
 const AppRoutes = () => {
   return (
@@ -31,6 +32,14 @@ const AppRoutes = () => {
         }
       />
       <Route path="/:slug" element={<PublicProfile />} />
+      <Route
+        path="/therapist/appointments"
+        element={
+          <ProtectedRoute>
+            <Appointments />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/therapist/schedule"
         element={
