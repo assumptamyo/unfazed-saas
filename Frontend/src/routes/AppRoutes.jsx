@@ -8,6 +8,10 @@ import ResetPassword from "../pages/auth/ResetPassword";
 import Dashboard from "../pages/therapist/Dashboard";
 import PublicProfile from "../pages/therapist/PublicProfile";
 import ProtectedRoute from "./ProtectedRoute";
+import Schedule from "../pages/therapist/Schedule";
+import EditProfile from "../pages/therapist/EditProfile";
+import Clients from "../pages/therapist/Clients";
+import ClientDetail from "../pages/therapist/ClientDetail";
 
 const AppRoutes = () => {
   return (
@@ -27,6 +31,38 @@ const AppRoutes = () => {
         }
       />
       <Route path="/:slug" element={<PublicProfile />} />
+      <Route
+        path="/therapist/schedule"
+        element={
+          <ProtectedRoute>
+            <Schedule />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/therapist/profile"
+        element={
+          <ProtectedRoute>
+            <EditProfile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/therapist/clients"
+        element={
+          <ProtectedRoute>
+            <Clients />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/therapist/clients/:id"
+        element={
+          <ProtectedRoute>
+            <ClientDetail />
+          </ProtectedRoute>
+        }
+      />
     </Routes>
   );
 };

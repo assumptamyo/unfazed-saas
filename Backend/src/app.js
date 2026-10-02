@@ -3,6 +3,8 @@ import cors from "cors";
 import authRoutes from "./routes/authRoutes.js";
 import errorHandler from "./middleware/errorhandler.js";
 import therapistRoutes from "./routes/therapistRoutes.js";
+import availabilityRoutes from "./routes/availabilityRoutes.js";
+import clientRoutes from "./routes/clientRoutes.js";
 
 
 const app = express();
@@ -15,8 +17,13 @@ app.get("/api/health", (req, res) => {
 });
 app.use("/api/therapist", therapistRoutes);
 
-// Routes
 app.use("/api/auth", authRoutes);
+
+app.use("/api/availability", availabilityRoutes);
+
+app.use("/uploads", express.static("uploads"));
+
+app.use("/api/clients", clientRoutes);
 
 app.use(errorHandler);
 

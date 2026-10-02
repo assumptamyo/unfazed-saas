@@ -55,6 +55,18 @@ const therapistSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    photoUrl: {
+      type: String,
+      default: "",
+    },
+    qualifications: {
+      type: String,
+      default: "",
+    },
+    yearsOfExperience: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true },
 );

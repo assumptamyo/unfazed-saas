@@ -41,8 +41,6 @@ export const sendWelcomeEmail = async (to, name) => {
   await getTransporter().sendMail(mailOptions);
   console.log(`Welcome email sent to ${to}`);
   console.log(`Welcome email sent from ${process.env.EMAIL_FROM}`);
-  
-  
 };
 
 export const sendOtpEmail = async (to, name, otp, purpose) => {
@@ -66,6 +64,56 @@ export const sendOtpEmail = async (to, name, otp, purpose) => {
       <h1 style="letter-spacing: 4px;">${otp}</h1>
       <p>This OTP will expire in 10 minutes.</p>
       <p>If you did not request this, please ignore this email.</p>
+    `,
+  };
+
+  await getTransporter().sendMail(mailOptions);
+};
+
+export const sendBookingConfirmationToClient = async (
+  to,
+  clientName,
+  therapistName,
+  date,
+  startTime,
+  endTime,
+) => {
+  const mailOptions = {
+    from: `"Unfazed" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `Session confirmed with ${therapistName}`,
+    html: `
+      <h2>Hi ${clientName},</h2>
+      <p>Your session with <strong>${therapistName}</strong> has been confirmed.</p>
+      <p><strong>Date:</strong> ${date}<br/>
+      <strong>Time:</strong> ${startTime} – ${endTime}</p>
+      <p>If you need to make any changes, please reach out to your therapist directly.</p>
+    `,
+  };
+
+  await getTransporter().sendMail(mailOptions);
+};
+
+export const sendNewBookingNotificationToTherapist = async (
+  to,
+  therapistName,
+  clientName,
+  clientEmail,
+  date,
+  startTime,
+  endTime,
+) => {
+  const mailOptions = {
+    from: `"Unfazed" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: `New session booked with ${clientName}`,
+    html: `
+      <h2>Hi ${therapistName},</h2>
+      <p>You have a new session booking.</p>
+      <p><strong>Client:</strong> ${clientName} (${clientEmail})<br/>
+      <strong>Date:</strong> ${date}<br/>
+      <strong>Time:</strong> ${startTime} – ${endTime}</p>
+      <p>Log in to your dashboard to see full details.</p>
     `,
   };
 
