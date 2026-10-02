@@ -13,6 +13,15 @@ import EditProfile from "../pages/therapist/EditProfile";
 import Clients from "../pages/therapist/Clients";
 import ClientDetail from "../pages/therapist/ClientDetail";
 import Appointments from "../pages/therapist/Appointments";
+import SessionNotes from "../pages/therapist/SessionNotes";
+import NoteEditor from "../pages/therapist/NoteEditor";
+import Billing from "../pages/therapist/Billing";
+import Messages from "../pages/therapist/Messages";
+import TherapistSessionRoom from "../pages/therapist/TherapistSessionRoom";
+import PortalEntry from "../pages/portal/PortalEntry";
+import PortalHome from "../pages/portal/PortalHome";
+import PortalRoom from "../pages/portal/PortalRoom";
+import PortalLogin from "../pages/portal/PortalLogin";
 
 const AppRoutes = () => {
   return (
@@ -37,6 +46,59 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <Appointments />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/therapist/notes"
+        element={
+          <ProtectedRoute>
+            <SessionNotes />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/therapist/notes/session/:sessionId"
+        element={
+          <ProtectedRoute>
+            <NoteEditor />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/therapist/messages"
+        element={
+          <ProtectedRoute>
+            <Messages />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/therapist/messages/:clientId"
+        element={
+          <ProtectedRoute>
+            <Messages />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/therapist/session/:id"
+        element={
+          <ProtectedRoute>
+            <TherapistSessionRoom />
+          </ProtectedRoute>
+        }
+      />
+      {/* Client space, opened from the private link in emails */}
+      <Route path="/portal" element={<PortalHome />} />
+      <Route path="/portal/login" element={<PortalLogin />} />
+      <Route path="/portal/session/:id" element={<PortalRoom />} />
+      <Route path="/portal/:token" element={<PortalEntry />} />
+      <Route
+        path="/therapist/billing"
+        element={
+          <ProtectedRoute>
+            <Billing />
           </ProtectedRoute>
         }
       />

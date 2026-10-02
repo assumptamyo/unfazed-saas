@@ -137,7 +137,7 @@ const Tile = ({ label, value, hint, accent, children }) => (
 );
 
 const AppointmentsOverview = ({ summary, now, slug, onOpen, onReschedule }) => (
-  <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-4 mb-8">
+  <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] gap-4 mb-8">
     <NextUpCard next={summary.nextSession} now={now} slug={slug} onOpen={onOpen} onReschedule={onReschedule} />
     <div className="grid grid-cols-2 gap-4">
       <Tile label="Today" value={summary.today} hint="sessions on the calendar" accent="#FF9E4C" />

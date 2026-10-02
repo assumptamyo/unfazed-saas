@@ -12,6 +12,7 @@ import { getAppointments, updateAppointmentStatus } from "../../api/appointmentA
 import { relativeDayLabel, formatShortDate, formatTime, apiError } from "../../components/appointments/appointmentUtils";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/toastContext";
+import { formatRupees } from "../../api/billingApi";
 
 const TABS = [
   { key: "upcoming", label: "Upcoming" },
@@ -212,10 +213,12 @@ const Appointments = () => {
     );
   };
 
-  const handleCancelled = ({ appointment, emailSent }) => {
+  const handleCancelled = ({ appointment, emailSent, refundedAmount, refundError }) => {
     setCancelTarget(null);
     applyUpdate(appointment);
-    notify(`Session cancelled${emailSent ? " — client notified" : ""}`, { type: "info" });
+    if (refundError) notify(refundError, { type: "error", duration: 8000 });
+    const refunded = refundedAmount ? ` · ${formatRupees(refundedAmount)} refunded` : "";
+    notify(`Session cancelled${refunded}${emailSent ? " — client notified" : ""}`, { type: "info" });
   };
 
   const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });

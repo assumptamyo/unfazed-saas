@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import ClientAvatar from "./ClientAvatar";
 import {
   PHASE_META,
@@ -18,6 +19,41 @@ const CancelIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
   </svg>
+);
+
+const NoteIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+  </svg>
+);
+
+const NOTE_LABELS = {
+  signed: "View signed note",
+  draft: "Continue draft note",
+  none: "Write session notes",
+};
+
+// Pencil that opens the session note; a small dot/tick shows whether a draft or signed note exists
+const NoteButton = ({ status, onClick }) => (
+  <button
+    onClick={(e) => {
+      e.stopPropagation();
+      onClick();
+    }}
+    title={NOTE_LABELS[status || "none"]}
+    aria-label={NOTE_LABELS[status || "none"]}
+    className="relative w-9 h-9 shrink-0 rounded-xl flex items-center justify-center text-[#8A7A6D] hover:bg-[#FFF3E6] hover:text-[#D96B00] transition"
+  >
+    <NoteIcon />
+    {status === "draft" && (
+      <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#FFB877] ring-2 ring-white" />
+    )}
+    {status === "signed" && (
+      <span className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-[#4F7161] text-white text-[8px] font-bold flex items-center justify-center ring-2 ring-white">
+        ✓
+      </span>
+    )}
+  </button>
 );
 
 const IconButton = ({ label, onClick, children, tone = "default" }) => (
@@ -42,6 +78,10 @@ const AppointmentCard = ({ appointment: a, now, onOpen, onStatus, onReschedule, 
   const meta = PHASE_META[a.phase];
   const isLive = a.phase === "upcoming" && now >= startDateTime(a) && now < endDateTime(a);
   const wasRescheduled = a.rescheduleHistory?.length > 0;
+  const navigate = useNavigate();
+  const openNotes = () => navigate(`/therapist/notes/session/${a.id}`);
+  // Cancelled sessions only show the pencil if a note was already started
+  const showNotes = a.phase !== "cancelled" || !!a.noteStatus;
 
   return (
     <div className="group relative flex gap-2.5 sm:gap-4 animate-fade-up">
@@ -97,6 +137,7 @@ const AppointmentCard = ({ appointment: a, now, onOpen, onStatus, onReschedule, 
           {/* Right side: actions depend on phase */}
           {a.phase === "upcoming" && (
             <div className="hidden sm:flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+              <NoteButton status={a.noteStatus} onClick={openNotes} />
               <IconButton label="Reschedule" onClick={() => onReschedule(a)}>
                 <RescheduleIcon />
               </IconButton>
@@ -108,6 +149,7 @@ const AppointmentCard = ({ appointment: a, now, onOpen, onStatus, onReschedule, 
 
           {a.phase === "attention" && (
             <div className="hidden sm:flex items-center gap-1.5">
+              <NoteButton status={a.noteStatus} onClick={openNotes} />
               <button
                 disabled={busy}
                 onClick={(e) => {
@@ -131,6 +173,9 @@ const AppointmentCard = ({ appointment: a, now, onOpen, onStatus, onReschedule, 
             </div>
           )}
 
+          {(a.phase === "past" || a.phase === "cancelled") && showNotes && (
+            <NoteButton status={a.noteStatus} onClick={openNotes} />
+          )}
           {(a.phase === "past" || a.phase === "cancelled") && (
             <span
               className="text-[11px] font-semibold px-2.5 py-1 rounded-full shrink-0"

@@ -2,6 +2,7 @@ import Availability from "../models/Availability.js";
 import AvailabilityOverride from "../models/AvailabilityOverride.js";
 import Session from "../models/Session.js";
 import { sendCancellationToClient } from "../services/emailService.js";
+import { refundSessionPayment } from "../services/paymentService.js";
 import {
   dateFromKey,
   toDateKey,
@@ -237,6 +238,13 @@ export const createOverride = async (req, res) => {
       };
       await session.save();
 
+      let refundedAmount = 0;
+      try {
+        refundedAmount = await refundSessionPayment(session._id, parsed.reason || "Therapist unavailable");
+      } catch (refundError) {
+        console.error("Time-off refund failed:", refundError.message);
+      }
+
       if (notifyClients && session.client?.email) {
         try {
           await sendCancellationToClient(
@@ -246,7 +254,8 @@ export const createOverride = async (req, res) => {
             session.date,
             session.startTime,
             session.endTime,
-            parsed.reason
+            parsed.reason,
+            refundedAmount
           );
           emailsSent += 1;
         } catch (emailError) {

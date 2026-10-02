@@ -1,4 +1,8 @@
 import Session from "../models/Session.js";
+import SessionNote from "../models/SessionNote.js";
+import Payment from "../models/Payment.js";
+import { refundSessionPayment } from "../services/paymentService.js";
+import { getJoinInfo } from "../services/videoService.js";
 import { generateAvailableSlots, findAvailableSlot } from "../services/slotService.js";
 import {
   sendCancellationToClient,
@@ -23,8 +27,9 @@ const getPhase = (session, now = new Date()) => {
   return toDateTime(session.date, session.endTime) <= now ? "attention" : "upcoming";
 };
 
-const serialize = (session, now = new Date()) => ({
+const serialize = (session, now = new Date(), noteStatus) => ({
   id: session._id,
+  ...(noteStatus !== undefined && { noteStatus }), // only sent when looked up
   date: toDateKey(session.date),
   startTime: session.startTime,
   endTime: session.endTime,
@@ -70,11 +75,13 @@ export const getAppointments = async (req, res) => {
     const search = (req.query.search || "").trim().toLowerCase();
     const now = new Date();
 
-    const sessions = await Session.find({ therapist: req.therapist._id })
-      .populate("client", "name email phone tags")
-      .lean();
+    const [sessions, notes] = await Promise.all([
+      Session.find({ therapist: req.therapist._id }).populate("client", "name email phone tags").lean(),
+      SessionNote.find({ therapist: req.therapist._id }).select("session status").lean(),
+    ]);
+    const noteStatusBySession = Object.fromEntries(notes.map((n) => [String(n.session), n.status]));
 
-    const all = sessions.map((s) => serialize(s, now));
+    const all = sessions.map((s) => serialize(s, now, noteStatusBySession[String(s._id)] || null));
 
     const counts = { upcoming: 0, attention: 0, past: 0, cancelled: 0, all: all.length };
     all.forEach((a) => (counts[a.phase] += 1));
@@ -130,7 +137,24 @@ export const getAppointmentById = async (req, res) => {
       return res.status(404).json({ message: "Appointment not found" });
     }
 
-    const appointment = serialize(session);
+    const [note, payment] = await Promise.all([
+      SessionNote.findOne({ session: session._id, therapist: req.therapist._id }).select("status"),
+      Payment.findOne({ session: session._id, status: { $in: ["paid", "refunded"] } }).select(
+        "amount status method receiptNumber paidAt refund"
+      ),
+    ]);
+    const appointment = serialize(session, new Date(), note?.status || null);
+    appointment.payment = payment
+      ? {
+          id: payment._id,
+          amount: payment.amount,
+          status: payment.status,
+          method: payment.method,
+          receiptNumber: payment.receiptNumber,
+          paidAt: payment.paidAt,
+          refundedAt: payment.refund?.createdAt || null,
+        }
+      : null;
 
     // The client record may have been deleted; the session itself still exists
     const clientSessions = session.client
@@ -211,7 +235,7 @@ export const updateAppointmentStatus = async (req, res) => {
 // @route  POST /api/appointments/:id/cancel
 export const cancelAppointment = async (req, res) => {
   try {
-    const { reason = "", notifyClient = true } = req.body;
+    const { reason = "", notifyClient = true, refund = true } = req.body;
     const session = await findOwnSession(req);
     if (!session) {
       return res.status(404).json({ message: "Appointment not found" });
@@ -230,6 +254,18 @@ export const cancelAppointment = async (req, res) => {
     };
     await session.save();
 
+    // Paid online? Give the money back unless the therapist chose not to
+    let refundedAmount = 0;
+    let refundError = "";
+    if (refund) {
+      try {
+        refundedAmount = await refundSessionPayment(session._id, reason.trim() || "Session cancelled by therapist");
+      } catch (err) {
+        console.error("Cancellation refund failed:", err.message);
+        refundError = "The session was cancelled, but the refund failed. Please refund it from the Billing page.";
+      }
+    }
+
     let emailSent = false;
     if (notifyClient && session.client?.email) {
       try {
@@ -240,7 +276,8 @@ export const cancelAppointment = async (req, res) => {
           session.date,
           session.startTime,
           session.endTime,
-          reason.trim()
+          reason.trim(),
+          refundedAmount
         );
         emailSent = true;
       } catch (emailError) {
@@ -251,6 +288,8 @@ export const cancelAppointment = async (req, res) => {
     return res.status(200).json({
       message: "Appointment cancelled",
       emailSent,
+      refundedAmount,
+      refundError,
       appointment: serialize(session),
     });
   } catch (error) {
@@ -324,5 +363,23 @@ export const rescheduleAppointment = async (req, res) => {
     }
     console.error("Reschedule appointment error:", error.message);
     return res.status(500).json({ message: "Server error while rescheduling appointment" });
+  }
+};
+
+// @desc   Join the video call for a session
+// @route  POST /api/appointments/:id/video
+export const joinVideoAsTherapist = async (req, res) => {
+  try {
+    const session = await Session.findOne({ _id: req.params.id, therapist: req.therapist._id });
+    if (!session) {
+      return res.status(404).json({ message: "Appointment not found" });
+    }
+    const info = await getJoinInfo(session, { role: "therapist", displayName: req.therapist.name });
+    return res.status(200).json(info);
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      message: error.statusCode ? error.message : "Couldn't open the video room",
+      opensAt: error.opensAt,
+    });
   }
 };

@@ -31,6 +31,18 @@ const sessionSchema = new mongoose.Schema(
       enum: SESSION_STATUSES,
       default: "confirmed",
     },
+    format: {
+      type: String,
+      enum: ["video"],
+      default: "video",
+    },
+    // Created the first time someone joins the video call
+    videoRoom: {
+      provider: { type: String },
+      name: { type: String },
+      url: { type: String },
+      expiresAt: { type: Date },
+    },
     sessionType: {
       type: String,
       default: "individual",

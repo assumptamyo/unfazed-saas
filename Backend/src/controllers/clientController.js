@@ -1,7 +1,11 @@
 import Client from "../models/Client.js";
 import Session from "../models/Session.js";
+import SessionNote from "../models/SessionNote.js";
+import Message from "../models/Message.js";
 import { dateFromKey, todayKey, toDateTime } from "../utils/dateUtils.js";
-import { sendCancellationToClient } from "../services/emailService.js";
+import { sendCancellationToClient, sendPortalLinkEmail } from "../services/emailService.js";
+import { createPortalLink } from "../services/portalService.js";
+import { refundSessionPayment } from "../services/paymentService.js";
 
 // @desc   Get all clients for the logged-in therapist (with search/filter)
 // @route  GET /api/clients
@@ -180,6 +184,13 @@ export const archiveClient = async (req, res) => {
       session.cancellation = { cancelledAt: now, cancelledBy: "therapist", reason: "" };
       await session.save();
 
+      let refundedAmount = 0;
+      try {
+        refundedAmount = await refundSessionPayment(session._id, "Session cancelled by therapist");
+      } catch (refundError) {
+        console.error("Archive refund failed:", refundError.message);
+      }
+
       if (notifyClient) {
         try {
           await sendCancellationToClient(
@@ -189,7 +200,8 @@ export const archiveClient = async (req, res) => {
             session.date,
             session.startTime,
             session.endTime,
-            ""
+            "",
+            refundedAmount
           );
         } catch (emailError) {
           console.error("Archive cancellation email failed:", emailError.message);
@@ -243,6 +255,8 @@ export const deleteClient = async (req, res) => {
       therapist: req.therapist._id,
       client: client._id,
     });
+    await SessionNote.deleteMany({ therapist: req.therapist._id, client: client._id });
+    await Message.deleteMany({ therapist: req.therapist._id, client: client._id });
     await client.deleteOne();
 
     return res.status(200).json({
@@ -252,5 +266,22 @@ export const deleteClient = async (req, res) => {
   } catch (error) {
     console.error("Delete client error:", error.message);
     return res.status(500).json({ message: "Server error while deleting client" });
+  }
+};
+
+// @desc   Email the client a fresh link to their private client space
+// @route  POST /api/clients/:id/portal-link
+export const sendPortalLink = async (req, res) => {
+  try {
+    const client = await Client.findOne({ _id: req.params.id, therapist: req.therapist._id });
+    if (!client) {
+      return res.status(404).json({ message: "Client not found" });
+    }
+    const link = await createPortalLink(client);
+    await sendPortalLinkEmail(client.email, client.name, req.therapist.name, link);
+    return res.status(200).json({ message: `Link sent to ${client.email}` });
+  } catch (error) {
+    console.error("Send portal link error:", error.message);
+    return res.status(500).json({ message: "Couldn't send the link" });
   }
 };

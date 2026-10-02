@@ -9,6 +9,7 @@ import {
   archiveClient,
   restoreClient,
   deleteClient,
+  sendPortalLink,
 } from "../controllers/clientController.js";
 
 const router = express.Router();
@@ -46,5 +47,7 @@ router.post(
 router.post("/:id/restore", [idParam], validateRequest, restoreClient);
 
 router.delete("/:id", [idParam], validateRequest, deleteClient);
+
+router.post("/:id/portal-link", [idParam], validateRequest, sendPortalLink);
 
 export default router;

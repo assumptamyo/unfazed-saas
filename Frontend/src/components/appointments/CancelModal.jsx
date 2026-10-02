@@ -14,6 +14,7 @@ const QUICK_REASONS = [
 const CancelModal = ({ appointment, onClose, onDone }) => {
   const [reason, setReason] = useState("");
   const [notifyClient, setNotifyClient] = useState(true);
+  const [refund, setRefund] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -21,7 +22,7 @@ const CancelModal = ({ appointment, onClose, onDone }) => {
     setSaving(true);
     setError("");
     try {
-      const res = await cancelAppointment(appointment.id, { reason, notifyClient });
+      const res = await cancelAppointment(appointment.id, { reason, notifyClient, refund });
       onDone(res.data);
     } catch (err) {
       setError(apiError(err));
@@ -29,7 +30,7 @@ const CancelModal = ({ appointment, onClose, onDone }) => {
     }
   };
 
-  const firstName = appointment.client?.name?.split(" ")[0] || "the client";
+  const clientName = appointment.client?.name || "the client";
 
   return (
     <Modal
@@ -65,7 +66,7 @@ const CancelModal = ({ appointment, onClose, onDone }) => {
         </div>
       </div>
 
-      <p className="text-xs font-medium text-[#8A7A6D] mb-2">Reason (shared with {firstName} if notified)</p>
+      <p className="text-xs font-medium text-[#8A7A6D] mb-2">Reason (shared with {clientName} if notified)</p>
       <div className="flex flex-wrap gap-2 mb-3">
         {QUICK_REASONS.map((r) => (
           <button
@@ -96,7 +97,16 @@ const CancelModal = ({ appointment, onClose, onDone }) => {
           onChange={(e) => setNotifyClient(e.target.checked)}
           className="w-4 h-4 accent-[#C8553D]"
         />
-        Email {firstName} that the session is cancelled
+        Email <span className="text-[#C8553D] font-medium"> {clientName} </span> that the session is cancelled
+      </label>
+      <label className="flex items-center gap-2.5 text-sm text-[#6B5B52] cursor-pointer select-none mt-2">
+        <input
+          type="checkbox"
+          checked={refund}
+          onChange={(e) => setRefund(e.target.checked)}
+          className="w-4 h-4 accent-[#C8553D]"
+        />
+        Refund the payment in full, if <span className="text-[#C8553D] font-medium"> {clientName} </span> paid online
       </label>
 
       {error && (

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import ClientAvatar from "./ClientAvatar";
 import { getAppointmentById } from "../../api/appointmentApi";
+import { formatRupees } from "../../api/billingApi";
 import {
   PHASE_META,
   STATUS_META,
@@ -187,6 +188,54 @@ const AppointmentDrawer = ({ appointment: a, now, onClose, onStatus, onReschedul
             )}
           </section>
 
+          {/* Payment */}
+          {detail?.appointment?.payment && (
+            <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-[#FBF8F3] border border-[#F0E8DD]">
+              <span className="text-sm text-[#6B5B52]">
+                {detail.appointment.payment.status === "refunded" ? "Refunded" : "Paid online"}
+                {detail.appointment.payment.receiptNumber && (
+                  <span className="text-xs text-[#A89C8F]"> · {detail.appointment.payment.receiptNumber}</span>
+                )}
+              </span>
+              <span
+                className={`text-sm font-semibold tabular-nums ${
+                  detail.appointment.payment.status === "refunded" ? "text-[#A89C8F] line-through" : "text-[#4F7161]"
+                }`}
+              >
+                {formatRupees(detail.appointment.payment.amount)}
+              </span>
+            </div>
+          )}
+
+          {/* Session note */}
+          {(a.phase !== "cancelled" || a.noteStatus) && (
+            <Link
+              to={`/therapist/notes/session/${a.id}`}
+              className="flex items-center gap-3 p-4 rounded-3xl border border-[#EFE6DA] bg-white hover:border-[#FFD9AE] hover:shadow-sm transition group"
+            >
+              <span
+                className={`w-10 h-10 shrink-0 rounded-2xl flex items-center justify-center text-lg ${
+                  a.noteStatus === "signed" ? "bg-[#EEF3F0] text-[#4F7161]" : "bg-[#FFF3E6] text-[#D96B00]"
+                }`}
+              >
+                {a.noteStatus === "signed" ? "🔒" : "✎"}
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-semibold text-[#2B221E]">
+                  {a.noteStatus === "signed"
+                    ? "View signed note"
+                    : a.noteStatus === "draft"
+                      ? "Continue draft note"
+                      : a.phase === "upcoming"
+                        ? "Prepare session notes"
+                        : "Write session notes"}
+                </span>
+                <span className="block text-xs text-[#8A7A6D]">Private · SOAP, DAP or free write</span>
+              </span>
+              <span className="text-[#D96B00] group-hover:translate-x-0.5 transition-transform">→</span>
+            </Link>
+          )}
+
           {/* History */}
           <section>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-[#A89C8F] mb-3">History</h3>
@@ -207,6 +256,15 @@ const AppointmentDrawer = ({ appointment: a, now, onClose, onStatus, onReschedul
 
         {/* Actions */}
         <div className="border-t border-[#F0E8DD] px-6 py-4 bg-white/80 backdrop-blur">
+          {a.phase === "upcoming" && (
+            <Link
+              to={`/therapist/session/${a.id}`}
+              className="flex items-center justify-center gap-2 w-full mb-2 py-3 rounded-full text-sm font-semibold bg-[#FF9E4C] text-[#211A16] hover:bg-[#FFB877] transition"
+            >
+              <span className="w-2 h-2 rounded-full bg-[#211A16] animate-pulse" />
+              Open video room
+            </Link>
+          )}
           {a.phase === "upcoming" && (
             <div className="flex gap-2">
               <button

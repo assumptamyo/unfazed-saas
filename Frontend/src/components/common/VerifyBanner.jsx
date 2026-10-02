@@ -38,7 +38,7 @@ const VerifyBanner = () => {
       <p>
         {sent
           ? "A new code has been sent — redirecting..."
-          : "Please verify your email to unlock all features."}
+          : "Verify your email to make your booking page live — clients can't book until you do."}
       </p>
 
       {!sent && (

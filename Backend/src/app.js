@@ -6,12 +6,22 @@ import therapistRoutes from "./routes/therapistRoutes.js";
 import availabilityRoutes from "./routes/availabilityRoutes.js";
 import clientRoutes from "./routes/clientRoutes.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
+import notesRoutes from "./routes/notesRoutes.js";
+import { paymentRouter, receiptRouter, billingRouter } from "./routes/paymentRoutes.js";
+import { messageRouter, portalRouter } from "./routes/messageRoutes.js";
 
 
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+// Keep the raw body too: Razorpay webhook signatures are computed over the exact bytes
+app.use(
+  express.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf.toString("utf8");
+    },
+  })
+);
 
 app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok", message: "Server is running" });
@@ -27,6 +37,15 @@ app.use("/uploads", express.static("uploads"));
 app.use("/api/clients", clientRoutes);
 
 app.use("/api/appointments", appointmentRoutes);
+
+app.use("/api/notes", notesRoutes);
+
+app.use("/api/payments", paymentRouter);
+app.use("/api/receipts", receiptRouter);
+app.use("/api/billing", billingRouter);
+
+app.use("/api/messages", messageRouter);
+app.use("/api/portal", portalRouter);
 
 app.use(errorHandler);
 

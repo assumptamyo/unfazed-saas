@@ -197,7 +197,7 @@ const RescheduleModal = ({ appointment, onClose, onDone }) => {
                 onChange={(e) => setNotifyClient(e.target.checked)}
                 className="w-4 h-4 accent-[#D96B00]"
               />
-              Email {appointment.client?.name?.split(" ")[0] || "the client"} about the new time
+              Email {appointment.client?.name || "the client"} about the new time
             </label>
           </div>
         </>

@@ -146,7 +146,7 @@ const TimeOffPlanner = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6 items-start">
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
       <AvailabilityCalendar
         month={month}
         days={days}

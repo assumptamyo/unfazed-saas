@@ -12,14 +12,15 @@ export const getMyProfile = async (req, res) => {
 export const getPublicProfile = async (req, res) => {
   try {
     const therapist = await Therapist.findOne({ slug: req.params.slug }).select(
-      "name slug bio specializations languages photoUrl qualifications yearsOfExperience",
+      "name slug bio specializations languages photoUrl qualifications yearsOfExperience sessionFee isVerified",
     );
 
     if (!therapist) {
       return res.status(404).json({ message: "Therapist not found" });
     }
 
-    return res.status(200).json({ therapist });
+    const { isVerified, ...publicFields } = therapist.toObject();
+    return res.status(200).json({ therapist: { ...publicFields, bookingOpen: isVerified } });
   } catch (error) {
     console.error("Get public profile error:", error.message);
     return res.status(500).json({ message: "Server error" });
@@ -34,6 +35,11 @@ export const getTherapistSlots = async (req, res) => {
 
     if (!therapist) {
       return res.status(404).json({ message: "Therapist not found" });
+    }
+
+    // Booking only opens once the therapist has verified their email
+    if (!therapist.isVerified) {
+      return res.status(200).json({ slots: [], bookingOpen: false });
     }
 
     const slots = await generateAvailableSlots(therapist._id, { days: req.query.days });

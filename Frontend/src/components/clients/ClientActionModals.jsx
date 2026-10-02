@@ -25,7 +25,7 @@ export const ArchiveClientModal = ({ client, upcomingCount, onClose, onDone }) =
   const [notifyClient, setNotifyClient] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const firstName = client.name.split(" ")[0];
+  const clientName = client.name;
 
   const handleArchive = async () => {
     setSaving(true);
@@ -80,11 +80,11 @@ export const ArchiveClientModal = ({ client, upcomingCount, onClose, onDone }) =
               onChange={(e) => setNotifyClient(e.target.checked)}
               className="w-4 h-4 accent-[#B7791F]"
             />
-            Email {firstName} about the cancellation
+            Email {clientName} about the cancellation
           </label>
         </div>
       ) : (
-        <p className="text-sm text-[#8A7A6D]">{firstName} has no upcoming sessions, so nothing will be cancelled.</p>
+        <p className="text-sm text-[#8A7A6D]">{clientName} has no upcoming sessions, so nothing will be cancelled.</p>
       )}
 
       <ErrorBox message={error} />
@@ -138,7 +138,7 @@ export const DeleteClientModal = ({ client, sessionCount, onClose, onDone }) => 
 
       <div className="rounded-2xl bg-[#FDECEA] border border-[#F5C2BE] px-4 py-3 mb-4">
         <p className="text-sm text-[#9C3B2E]">
-          This removes the client, their intake answers, consent record and{" "}
+          This removes the client, their intake answers, consent record, session notes and{" "}
           <strong className="font-semibold">
             all {sessionCount} session{sessionCount === 1 ? "" : "s"}
           </strong>{" "}

@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { getClientById, restoreClient } from "../../api/clientApi";
+import { getNotes } from "../../api/notesApi";
+import { sendPortalLink } from "../../api/messagesApi";
 import DashboardLayout from "../../components/dashboard/DashboardLayout";
 import { ArchiveClientModal, DeleteClientModal } from "../../components/clients/ClientActionModals";
 import { useToast } from "../../context/toastContext";
@@ -29,6 +31,7 @@ const ClientDetail = () => {
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [clientNotes, setClientNotes] = useState([]);
   const navigate = useNavigate();
   const { notify } = useToast();
 
@@ -46,6 +49,16 @@ const ClientDetail = () => {
     };
     load();
   }, [id, reloadKey]);
+
+  useEffect(() => {
+    let alive = true;
+    getNotes({ client: id })
+      .then((res) => alive && setClientNotes(res.data.notes))
+      .catch(() => alive && setClientNotes([]));
+    return () => {
+      alive = false;
+    };
+  }, [id]);
 
   if (loading) {
     return (
@@ -72,6 +85,15 @@ const ClientDetail = () => {
   const upcomingCount = sessions.filter(
     (s) => s.status === "confirmed" && parseISO(`${s.date.slice(0, 10)}T${s.startTime}`) > now
   ).length;
+
+  const handleSendLink = async () => {
+    try {
+      const res = await sendPortalLink(client._id);
+      notify(res.data.message);
+    } catch (err) {
+      notify(apiError(err), { type: "error" });
+    }
+  };
 
   const handleRestore = async () => {
     try {
@@ -118,6 +140,23 @@ const ClientDetail = () => {
               <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${client.status === "active" ? "bg-[#EEF3F0] text-[#4F7161]" : "bg-[#F3EFEA] text-[#8A7A6D]"}`}>
                 {client.status}
               </span>
+            )}
+            {!client.archivedAt && (
+              <>
+                <Link
+                  to={`/therapist/messages/${client._id}`}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-full bg-[#211A16] text-white hover:bg-[#3A2E27] transition"
+                >
+                  Message
+                </Link>
+                <button
+                  onClick={handleSendLink}
+                  title="Email the client a fresh link to their private space"
+                  className="text-xs font-medium px-3 py-1.5 rounded-full border border-[#E5DCD3] text-[#6B5B52] hover:border-[#FF9E4C] hover:text-[#D96B00] transition"
+                >
+                  Send client link
+                </button>
+              </>
             )}
             {!client.archivedAt && (
               <button
@@ -207,12 +246,47 @@ const ClientDetail = () => {
           )}
         </div>
 
+        {/* Notes timeline */}
+        <div className="bg-white border border-[#E5DCD3] rounded-3xl p-6 mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg text-[#2B221E]" style={{ fontFamily: "Literata, serif" }}>
+              Session Notes
+            </h2>
+            <span className="text-xs text-[#A89C8F]">Private to you</span>
+          </div>
+          {clientNotes.length === 0 ? (
+            <p className="text-sm text-[#6B5B52]">No notes yet. Open a session to write one.</p>
+          ) : (
+            <ol className="relative border-l border-[#EAE0D4] ml-1.5 space-y-4">
+              {clientNotes.map((n) => (
+                <li key={n.id} className="pl-5 relative">
+                  <span
+                    className={`absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full ring-4 ring-white ${
+                      n.status === "signed" ? "bg-[#4F7161]" : "bg-[#FFB877]"
+                    }`}
+                  />
+                  <Link to={`/therapist/notes/session/${n.sessionId}`} className="group block">
+                    <p className="text-sm font-medium text-[#2B221E] group-hover:text-[#D96B00] transition">
+                      {n.session ? format(parseISO(n.session.date), "EEE, MMM d, yyyy") : "Session removed"}
+                      <span className="text-xs font-normal text-[#A89C8F]">
+                        {" "}
+                        · {n.status === "signed" ? "Signed" : "Draft"}
+                      </span>
+                    </p>
+                    <p className="text-sm text-[#6B5B52] line-clamp-2 mt-0.5">{n.excerpt || "Empty draft"}</p>
+                  </Link>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+
         {/* Danger zone */}
         <div className="mt-6 rounded-3xl border border-[#F5C2BE]/70 p-6 flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-sm font-semibold text-[#2B221E]">Delete client permanently</p>
             <p className="text-xs text-[#8A7A6D] mt-0.5">
-              Removes this client and all {sessions.length} of their sessions. This can't be undone.
+              Removes this client, all {sessions.length} of their sessions and their notes. This can't be undone.
             </p>
           </div>
           <button

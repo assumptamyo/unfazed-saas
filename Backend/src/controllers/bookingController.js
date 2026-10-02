@@ -1,126 +1,275 @@
-import Client from "../models/Client.js";
+import jwt from "jsonwebtoken";
 import Session from "../models/Session.js";
 import Therapist from "../models/Therapist.js";
+import Client from "../models/Client.js";
+import BookingRequest from "../models/BookingRequest.js";
 import { findAvailableSlot } from "../services/slotService.js";
-import { dateFromKey } from "../utils/dateUtils.js";
+import { paymentsEnabled } from "../services/razorpayService.js";
+import { startCheckout, upsertClientForBooking } from "../services/paymentService.js";
+import { createPortalLink, issueClientToken } from "../services/portalService.js";
+import {
+  generateCode,
+  hashCode,
+  checkCode,
+  resendBlocked,
+  CODE_TTL_MINUTES,
+} from "../services/codeService.js";
+import { dateFromKey, toDateKey } from "../utils/dateUtils.js";
 import {
   sendBookingConfirmationToClient,
   sendNewBookingNotificationToTherapist,
+  sendVerificationCodeEmail,
 } from "../services/emailService.js";
 
-// @desc   Book a session slot (public - client books via the branded link)
-// @route  POST /api/therapist/:slug/book
-export const bookSession = async (req, res) => {
-  try {
-    const { slug } = req.params;
-    const {
-      clientName,
-      clientEmail,
-      clientPhone,
-      date,
-      startTime,
-      notes,
-      age,
-      gender,
-      occupation,
-      presentingConcern,
-      consentAgreed,
-    } = req.body;
+const slotTakenResponse = (res) =>
+  res.status(409).json({ message: "That time is no longer available. Please choose another slot." });
 
-    if (consentAgreed !== true) {
+// Therapists must verify their own email before their booking page takes bookings
+const findBookableTherapist = async (slug, res) => {
+  const therapist = await Therapist.findOne({ slug });
+  if (!therapist) {
+    res.status(404).json({ message: "Therapist not found" });
+    return null;
+  }
+  if (!therapist.isVerified) {
+    res.status(403).json({ message: "This therapist isn't taking online bookings yet." });
+    return null;
+  }
+  return therapist;
+};
+
+// A client who verified their email before (and is signed in on this device) can skip the code
+const rememberedClient = async (clientToken, therapist, email) => {
+  if (!clientToken) return null;
+  try {
+    const decoded = jwt.verify(clientToken, process.env.JWT_SECRET);
+    if (decoded.role !== "client") return null;
+    const client = await Client.findById(decoded.clientId);
+    const sameTherapist = client && String(client.therapist) === String(therapist._id);
+    return sameTherapist && client.email === email.toLowerCase() ? client : null;
+  } catch {
+    return null;
+  }
+};
+
+// Create the booking once the client's email is confirmed. Free sessions are
+// confirmed now; paid sessions return a Razorpay checkout.
+const completeBooking = async (therapist, booking, res) => {
+  const client = await upsertClientForBooking(therapist._id, booking);
+  const clientToken = issueClientToken(client);
+  const dateKey = toDateKey(booking.date);
+
+  if (therapist.sessionFee > 0) {
+    if (!paymentsEnabled()) {
+      return res.status(503).json({
+        message: "Online payment isn't available right now. Please contact your therapist directly.",
+      });
+    }
+    const checkout = await startCheckout(therapist, booking);
+    if (!checkout) return slotTakenResponse(res);
+    return res.status(200).json({ requiresPayment: true, checkout, clientToken });
+  }
+
+  const session = await Session.create({
+    therapist: therapist._id,
+    client: client._id,
+    date: booking.date,
+    startTime: booking.startTime,
+    endTime: booking.endTime,
+    notes: booking.notes,
+  });
+
+  // Fire confirmation emails - don't block the booking response if these fail
+  try {
+    const portalUrl = await createPortalLink(client);
+    await sendBookingConfirmationToClient(
+      client.email,
+      client.name,
+      therapist.name,
+      dateKey,
+      session.startTime,
+      session.endTime,
+      null,
+      portalUrl
+    );
+    await sendNewBookingNotificationToTherapist(
+      therapist.email,
+      therapist.name,
+      client.name,
+      client.email,
+      dateKey,
+      session.startTime,
+      session.endTime
+    );
+  } catch (emailError) {
+    console.error("Booking email failed:", emailError.message);
+  }
+
+  return res.status(201).json({
+    message: "Session booked successfully",
+    requiresPayment: false,
+    clientToken,
+    session: {
+      id: session._id,
+      date: dateKey,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      status: session.status,
+    },
+  });
+};
+
+const handleError = (error, res, label) => {
+  if (error.code === 11000) {
+    return res.status(409).json({ message: "This slot was just booked by someone else. Please choose another time." });
+  }
+  console.error(`${label}:`, error.message);
+  return res.status(error.statusCode || 500).json({ message: "Server error while booking session" });
+};
+
+// @desc   Step 1: check the slot and email the client a code (or book straight
+//         away for a client already verified on this device)
+// @route  POST /api/therapist/:slug/book/start   (public)
+export const startBooking = async (req, res) => {
+  try {
+    const b = req.body;
+    if (b.consentAgreed !== true) {
       return res.status(400).json({ message: "Consent is required to book a session" });
     }
 
-    const therapist = await Therapist.findOne({ slug });
-    if (!therapist) {
-      return res.status(404).json({ message: "Therapist not found" });
-    }
+    const therapist = await findBookableTherapist(req.params.slug, res);
+    if (!therapist) return undefined;
 
-    // Only accept times that are genuinely open on the therapist's calendar
-    const dateKey = date.slice(0, 10);
-    const slot = await findAvailableSlot(therapist._id, dateKey, startTime);
-    if (!slot) {
-      return res.status(409).json({
-        message: "That time is no longer available. Please choose another slot.",
-      });
-    }
+    const dateKey = b.date.slice(0, 10);
+    const slot = await findAvailableSlot(therapist._id, dateKey, b.startTime);
+    if (!slot) return slotTakenResponse(res);
 
-    let client = await Client.findOne({
-      therapist: therapist._id,
-      email: clientEmail.toLowerCase(),
-    });
-
-    if (!client) {
-      client = await Client.create({
-        therapist: therapist._id,
-        name: clientName,
-        email: clientEmail,
-        phone: clientPhone || "",
-        intake: {
-          demographics: {
-            age: age || undefined,
-            gender: gender || "",
-            occupation: occupation || "",
-          },
-          presentingConcern: presentingConcern || "",
-        },
-        consent: { agreed: true, agreedAt: new Date() },
-      });
-    } else {
-      if (!client.consent?.agreed) client.consent = { agreed: true, agreedAt: new Date() };
-      client.archivedAt = null; // booking again brings an archived client back
-      await client.save();
-    }
-
-    const session = await Session.create({
-      therapist: therapist._id,
-      client: client._id,
+    const booking = {
+      clientName: b.clientName,
+      clientEmail: b.clientEmail.toLowerCase(),
+      clientPhone: b.clientPhone || "",
       date: dateFromKey(dateKey),
       startTime: slot.startTime,
       endTime: slot.endTime,
-      notes: notes || "",
-    });
+      notes: b.notes || "",
+      age: b.age ? Number(b.age) : undefined,
+      gender: b.gender || "",
+      occupation: b.occupation || "",
+      presentingConcern: b.presentingConcern || "",
+    };
 
-    // Fire confirmation emails - don't block the booking response if these fail
-    try {
-      await sendBookingConfirmationToClient(
-        client.email,
-        client.name,
-        therapist.name,
-        dateKey,
-        slot.startTime,
-        slot.endTime
-      );
-      await sendNewBookingNotificationToTherapist(
-        therapist.email,
-        therapist.name,
-        client.name,
-        client.email,
-        dateKey,
-        slot.startTime,
-        slot.endTime
-      );
-    } catch (emailError) {
-      console.error("Booking email failed:", emailError.message);
+    if (await rememberedClient(b.clientToken, therapist, booking.clientEmail)) {
+      return completeBooking(therapist, booking, res);
     }
 
-    return res.status(201).json({
-      message: "Session booked successfully",
-      session: {
-        id: session._id,
-        date: session.date,
-        startTime: session.startTime,
-        endTime: session.endTime,
-        status: session.status,
-      },
+    const code = generateCode();
+    const request = await BookingRequest.create({
+      therapist: therapist._id,
+      booking,
+      codeHash: hashCode(code),
+      expiresAt: new Date(Date.now() + CODE_TTL_MINUTES * 60000),
     });
-  } catch (error) {
-    if (error.code === 11000) {
-      return res.status(409).json({
-        message: "This slot was just booked by someone else. Please choose another time.",
+
+    try {
+      await sendVerificationCodeEmail(booking.clientEmail, booking.clientName, code, "booking", therapist.name);
+    } catch (emailError) {
+      console.error("Booking code email failed:", emailError.message);
+      request.status = "expired"; // release the slot
+      await request.save();
+      return res.status(502).json({
+        message: "We couldn't send a code to that email address. Please check it and try again.",
       });
     }
-    console.error("Book session error:", error.message);
-    return res.status(500).json({ message: "Server error while booking session" });
+
+    return res.status(200).json({
+      needsVerification: true,
+      requestId: request._id,
+      email: booking.clientEmail,
+      expiresAt: request.expiresAt,
+    });
+  } catch (error) {
+    return handleError(error, res, "Start booking error");
   }
+};
+
+// @desc   Step 2: check the emailed code, then book
+// @route  POST /api/therapist/:slug/book/verify   (public)
+export const verifyBooking = async (req, res) => {
+  try {
+    const therapist = await findBookableTherapist(req.params.slug, res);
+    if (!therapist) return undefined;
+
+    const request = await BookingRequest.findOne({
+      _id: req.body.requestId,
+      therapist: therapist._id,
+      status: "pending",
+    });
+    const problem = await checkCode(request, req.body.code);
+    if (problem) {
+      return res.status(400).json({ message: problem });
+    }
+
+    // Atomically claim the request so a double-submit can't book twice
+    const claimed = await BookingRequest.findOneAndUpdate(
+      { _id: request._id, status: "pending" },
+      { $set: { status: "verified" } },
+      { new: true }
+    );
+    if (!claimed) {
+      return res.status(409).json({ message: "This booking was already confirmed." });
+    }
+
+    // The hold is released now, so re-check the slot before booking
+    const slot = await findAvailableSlot(therapist._id, toDateKey(claimed.booking.date), claimed.booking.startTime);
+    if (!slot) return slotTakenResponse(res);
+
+    return completeBooking(therapist, claimed.booking.toObject(), res);
+  } catch (error) {
+    return handleError(error, res, "Verify booking error");
+  }
+};
+
+// @desc   Send a new code for a pending booking
+// @route  POST /api/therapist/:slug/book/resend   (public)
+export const resendBookingCode = async (req, res) => {
+  try {
+    const therapist = await findBookableTherapist(req.params.slug, res);
+    if (!therapist) return undefined;
+
+    const request = await BookingRequest.findOne({
+      _id: req.body.requestId,
+      therapist: therapist._id,
+      status: "pending",
+    });
+    if (!request) {
+      return res.status(404).json({ message: "This booking request has expired. Please pick your time again." });
+    }
+    const blocked = resendBlocked(request);
+    if (blocked) {
+      return res.status(429).json({ message: blocked });
+    }
+
+    // A new code also extends the slot hold; verifyBooking re-checks the slot anyway
+    const code = generateCode();
+    request.set({
+      codeHash: hashCode(code),
+      attempts: 0,
+      sends: request.sends + 1,
+      lastSentAt: new Date(),
+      expiresAt: new Date(Date.now() + CODE_TTL_MINUTES * 60000),
+    });
+    await request.save();
+    await sendVerificationCodeEmail(request.booking.clientEmail, request.booking.clientName, code, "booking", therapist.name);
+
+    return res.status(200).json({ message: "A new code is on its way", expiresAt: request.expiresAt });
+  } catch (error) {
+    return handleError(error, res, "Resend booking code error");
+  }
+};
+
+// @desc   Abandon a pending booking (e.g. the client typed the wrong email) so the slot frees up
+// @route  POST /api/therapist/:slug/book/cancel   (public; the request id is only known to that browser)
+export const cancelBookingRequest = async (req, res) => {
+  await BookingRequest.updateOne({ _id: req.body.requestId, status: "pending" }, { $set: { status: "expired" } });
+  return res.status(200).json({ message: "Released" });
 };

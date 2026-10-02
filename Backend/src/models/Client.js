@@ -51,6 +51,20 @@ const clientSchema = new mongoose.Schema(
         default: "",
       },
     },
+    // Private links into the client space. Only SHA-256 hashes are stored;
+    // the raw token exists only in the link emailed to the client.
+    portalTokens: [
+      {
+        _id: false,
+        hash: { type: String, required: true },
+        createdAt: { type: Date, default: Date.now },
+        expiresAt: { type: Date, required: true },
+      },
+    ],
+    // Throttles "you have a new message" emails
+    lastMessageEmailAt: {
+      type: Date,
+    },
     // Set when the therapist archives the client; archived clients are hidden
     // from lists but their history is kept
     archivedAt: {
@@ -67,7 +81,12 @@ const clientSchema = new mongoose.Schema(
       },
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    // Never send portal link hashes out of the API
+    toJSON: { transform: (doc, ret) => (delete ret.portalTokens, ret) },
+    toObject: { transform: (doc, ret) => (delete ret.portalTokens, ret) },
+  }
 );
 
 // A therapist shouldn't have two clients with the same email

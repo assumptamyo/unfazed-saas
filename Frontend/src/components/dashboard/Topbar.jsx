@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+import { useSocketEvents } from "../../hooks/useSocket";
+import { getUnreadCount } from "../../api/messagesApi";
 
 const BellIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -34,8 +37,25 @@ const MenuIcon = () => (
 
 const Topbar = ({ therapist, recentActivity = [], searchValue, onSearchChange, onMenuClick }) => {
   const [showNotifications, setShowNotifications] = useState(false);
-  const [showChatTip, setShowChatTip] = useState(false);
+  const { token } = useAuth();
+  const [unread, setUnread] = useState(0);
   const notifRef = useRef(null);
+
+  useEffect(() => {
+    let alive = true;
+    getUnreadCount()
+      .then((res) => alive && setUnread(res.data.count))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useSocketEvents(token, {
+    "message:new": (m) => m.sender === "client" && setUnread((n) => n + 1),
+    "messages:read": ({ reader }) =>
+      reader === "therapist" && getUnreadCount().then((res) => setUnread(res.data.count)).catch(() => {}),
+  });
 
   useEffect(() => {
     const handler = (e) => {
@@ -80,22 +100,19 @@ const Topbar = ({ therapist, recentActivity = [], searchValue, onSearchChange, o
       {/* Right side: Quick Actions, Notifications & Profile */}
       <div className="flex items-center gap-3 sm:gap-4">
 
-        {/* Chat / Messages Tooltip Button */}
-        <div className="relative">
-          <button
-            onMouseEnter={() => setShowChatTip(true)}
-            onMouseLeave={() => setShowChatTip(false)}
-            className="w-10 h-10 rounded-2xl bg-[#F9F6F0] border border-[#E5DCD3] flex items-center justify-center text-[#6B5B52] opacity-50 cursor-not-allowed transition"
-            aria-label="Chat"
-          >
-            <ChatIcon />
-          </button>
-          {showChatTip && (
-            <div className="absolute right-0 mt-2 bg-[#2B221E] text-white text-xs px-3 py-1.5 rounded-xl whitespace-nowrap shadow-md z-30">
-              Chat — coming soon
-            </div>
+        {/* Messages, with a live unread count */}
+        <Link
+          to="/therapist/messages"
+          className="relative w-10 h-10 rounded-2xl bg-[#F9F6F0] border border-[#E5DCD3] flex items-center justify-center text-[#6B5B52] hover:border-[#FF9E4C] hover:text-[#D96B00] transition"
+          aria-label={unread ? `Messages, ${unread} unread` : "Messages"}
+        >
+          <ChatIcon />
+          {unread > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-[#FF9E4C] text-[#211A16] text-[10px] font-bold rounded-full flex items-center justify-center shadow-xs">
+              {unread > 99 ? "99+" : unread}
+            </span>
           )}
-        </div>
+        </Link>
 
         {/* Notifications Dropdown */}
         <div className="relative" ref={notifRef}>
@@ -163,7 +180,7 @@ const Topbar = ({ therapist, recentActivity = [], searchValue, onSearchChange, o
             </div>
           )}
           <div className="hidden lg:block text-left">
-            <p className="text-sm font-semibold text-[#2B221E] leading-tight">Dr. {therapist?.name}</p>
+            <p className="text-sm font-semibold text-[#2B221E] leading-tight">{therapist?.name}</p>
             <a
               href={`/${therapist?.slug}`}
               target="_blank"

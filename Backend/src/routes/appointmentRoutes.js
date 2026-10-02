@@ -9,6 +9,7 @@ import {
   updateAppointmentStatus,
   cancelAppointment,
   rescheduleAppointment,
+  joinVideoAsTherapist,
 } from "../controllers/appointmentController.js";
 
 const router = express.Router();
@@ -59,6 +60,7 @@ router.post(
     idParam,
     body("reason").optional().isString().isLength({ max: 1000 }),
     body("notifyClient").optional().isBoolean().toBoolean(),
+    body("refund").optional().isBoolean().toBoolean(),
   ],
   validateRequest,
   cancelAppointment
@@ -78,5 +80,7 @@ router.post(
   validateRequest,
   rescheduleAppointment
 );
+
+router.post("/:id/video", [idParam], validateRequest, joinVideoAsTherapist);
 
 export default router;

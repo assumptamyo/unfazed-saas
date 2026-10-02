@@ -56,7 +56,21 @@ const Home = () => {
             className="text-[#D96B00] text-sm hover:text-[#994900] transition-colors duration-200"
             style={{ fontFamily: "Inter, sans-serif" }}
           >
-            Already have an account? Log in
+            Therapist? Log in
+          </Link>
+
+          <div className="flex items-center gap-3 w-full max-w-xs mt-2">
+            <span className="flex-1 h-px bg-[#E5DCD3]" />
+            <span className="text-xs text-[#A89C8F]" style={{ fontFamily: "Inter, sans-serif" }}>or</span>
+            <span className="flex-1 h-px bg-[#E5DCD3]" />
+          </div>
+
+          <Link
+            to="/portal/login"
+            className="flex items-center gap-2 text-sm font-medium text-[#2B221E] border border-[#E5DCD3] bg-white/70 px-6 py-2.5 rounded-full hover:border-[#FF9E4C] transition"
+            style={{ fontFamily: "Inter, sans-serif" }}
+          >
+            I'm a client — access my sessions →
           </Link>
         </div>
       </div>

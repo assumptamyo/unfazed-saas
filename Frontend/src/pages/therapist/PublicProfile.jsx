@@ -37,7 +37,7 @@ const PublicProfile = () => {
             res.data.therapist.bio || `Book a session with ${res.data.therapist.name}`
           );
         }
-      } catch (err) {
+      } catch {
         setNotFound(true);
       }
     };
@@ -61,7 +61,7 @@ const PublicProfile = () => {
   return (
     <div className="min-h-screen bg-[#F9F6F0]" style={{ fontFamily: "Inter, sans-serif" }}>
       <div className="max-w-5xl mx-auto px-6 py-10 sm:py-16">
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,380px)_1fr] gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-8 items-start">
 
           {/* Left column — profile info, sticky on desktop */}
           <div className="lg:sticky lg:top-16">
@@ -132,8 +132,8 @@ const PublicProfile = () => {
             />
           </div>
 
-          {/* Right column — booking */}
-          <div>
+          {/* Right column — booking. min-w-0 lets the date row scroll instead of widening the page */}
+          <div className="min-w-0">
             <div className="mb-5">
               <h2 className="text-2xl text-[#2B221E]" style={{ fontFamily: "Literata, serif" }}>
                 Book a session
@@ -142,7 +142,13 @@ const PublicProfile = () => {
                 Pick a time that works for you — you'll get a confirmation right away.
               </p>
             </div>
-            <BookingCalendar slug={slug} />
+            {therapist.bookingOpen === false ? (
+              <div className="bg-white border border-[#EFE6DA] rounded-2xl p-6 text-sm text-[#6B6059]">
+                {therapist.name} isn't taking online bookings yet. Please check back soon.
+              </div>
+            ) : (
+              <BookingCalendar slug={slug} fee={therapist.sessionFee || 0} therapistName={therapist.name} />
+            )}
           </div>
 
         </div>

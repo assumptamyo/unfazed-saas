@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import axiosInstance from "../api/axiosInstance";
+import { disconnectSocket } from "../hooks/useSocket";
 
 const AuthContext = createContext();
 
@@ -16,7 +17,7 @@ export const AuthProvider = ({ children }) => {
           const res = await axiosInstance.get("/therapist/me");
           setTherapist(res.data.therapist);
           setToken(storedToken);
-        } catch (error) {
+        } catch {
           localStorage.removeItem("token");
           setToken(null);
         }
@@ -40,6 +41,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    disconnectSocket(localStorage.getItem("token"));
     localStorage.removeItem("token");
     setToken(null);
     setTherapist(null);
