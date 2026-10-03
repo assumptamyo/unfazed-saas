@@ -9,7 +9,8 @@ let io = null;
 // Messages are sent through the REST API; sockets push them out and carry
 // lightweight signals such as typing indicators.
 export const initSocket = (httpServer) => {
-  io = new Server(httpServer, { cors: { origin: process.env.FRONTEND_URL || "*" } });
+  const origins = (process.env.FRONTEND_URL || "").split(",").map((o) => o.trim().replace(/\/$/, "")).filter(Boolean);
+  io = new Server(httpServer, { cors: { origin: origins.length ? origins : "*" } });
 
   io.use(async (socket, next) => {
     try {

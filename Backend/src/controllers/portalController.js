@@ -32,7 +32,7 @@ export const startPortalSession = async (req, res) => {
 export const getPortal = async (req, res) => {
   try {
     const client = req.client;
-    const [therapist, sessions, clientPackages] = await Promise.all([
+    const [therapist, clientPackages, sessions] = await Promise.all([
       Therapist.findById(client.therapist).select("name slug photoUrl qualifications"),
       findClientPackages(client.therapist, client._id),
       Session.find({
@@ -136,17 +136,18 @@ export const markClientRead = async (req, res) => {
   return res.status(200).json({ ok: true });
 };
 
-const GENERIC_SENT = "If you have sessions booked with that email, we've sent you a 6-digit code.";
+const GENERIC_SENT = "We've sent a 6-digit code to your email.";
+const NO_SESSIONS = "There are no sessions booked with this email. Check the spelling, or book a session with your therapist first.";
 
-// @desc   Email a sign-in code to a client. Always answers the same way so it
-//         never reveals whether an email belongs to a client.
+// @desc   Email a sign-in code to a client. An email with no bookings is told so
+//         straight away instead of waiting for a code that never arrives.
 // @route  POST /api/portal/login/request   (public)
 export const requestLoginCode = async (req, res) => {
   try {
     const email = req.body.email.toLowerCase().trim();
     const client = await Client.findOne({ email, archivedAt: null });
     if (!client) {
-      return res.status(200).json({ message: GENERIC_SENT });
+      return res.status(404).json({ message: NO_SESSIONS });
     }
 
     let record = await LoginCode.findOne({ email });
@@ -174,8 +175,8 @@ export const requestLoginCode = async (req, res) => {
     try {
       await sendVerificationCodeEmail(email, client.name, code, "signin");
     } catch (emailError) {
-      // Same reply either way, so a failure can't reveal that this email is a client
       console.error("Sign-in code email failed:", emailError.message);
+      return res.status(500).json({ message: "Couldn't send a code right now. Please try again." });
     }
     return res.status(200).json({ message: GENERIC_SENT });
   } catch (error) {

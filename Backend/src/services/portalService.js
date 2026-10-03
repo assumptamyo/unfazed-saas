@@ -8,7 +8,9 @@ const CLIENT_SESSION_DAYS = 30;
 
 const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex");
 
-export const frontendUrl = () => (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+// FRONTEND_URL may list several origins for CORS; links in emails use the first
+export const frontendUrl = () =>
+  ((process.env.FRONTEND_URL || "").split(",")[0].trim() || "http://localhost:5173").replace(/\/$/, "");
 
 // Create a private link into the client's space. Only the hash is stored, so a
 // database leak doesn't expose working links. Older links keep working until they expire.

@@ -16,7 +16,13 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 
 const app = express();
 
-app.use(cors());
+// Behind the host's HTTPS proxy, so req.protocol reports "https" (used for uploaded photo links)
+app.set("trust proxy", 1);
+
+// Only the frontend may call the API from a browser (FRONTEND_URL, comma-separated for several).
+// Without FRONTEND_URL (local development) any origin is allowed.
+const allowedOrigins = (process.env.FRONTEND_URL || "").split(",").map((o) => o.trim().replace(/\/$/, "")).filter(Boolean);
+app.use(cors(allowedOrigins.length ? { origin: allowedOrigins } : {}));
 // Keep the raw body too: Razorpay webhook signatures are computed over the exact bytes
 app.use(
   express.json({

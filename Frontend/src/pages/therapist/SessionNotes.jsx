@@ -52,7 +52,9 @@ const NoteCard = ({ note }) => {
               {TEMPLATES[note.template]?.label}
             </span>
             {note.visibility === "shared" && (
-              <span className="text-[10px] font-semibold text-[#5B7A99] bg-[#EEF3F8] px-2 py-0.5 rounded-full">👁 Shared</span>
+              <span className="text-[10px] font-semibold text-[#5B7A99] bg-[#EEF3F8] px-2 py-0.5 rounded-full">
+                {signed ? "👁 Shared" : "👁 For client · not shared yet"}
+              </span>
             )}
           </div>
           <p className="text-xs text-[#A89C8F] mt-0.5">

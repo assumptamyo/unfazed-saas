@@ -1,5 +1,7 @@
 import dotenv from "dotenv";
 dotenv.config();
+// Session times ("09:00") are Indian time; cloud servers run in UTC unless told otherwise
+process.env.TZ = process.env.TZ || "Asia/Kolkata";
 
 import http from "http";
 import connectDB from "./src/config/db.js";
