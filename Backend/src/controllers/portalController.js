@@ -5,6 +5,7 @@ import LoginCode from "../models/LoginCode.js";
 import { exchangePortalToken, issueClientToken } from "../services/portalService.js";
 import { generateCode, hashCode, checkCode, resendBlocked, CODE_TTL_MINUTES } from "../services/codeService.js";
 import { sendVerificationCodeEmail } from "../services/emailService.js";
+import { getSharedNotesForClient } from "../services/clientNoteService.js";
 import { getJoinInfo, joinWindow, videoProvider } from "../services/videoService.js";
 import { getThread, markRead, sendMessage } from "../services/messageService.js";
 import { toDateKey, todayKey, dateFromKey, addDaysToKey, toDateTime } from "../utils/dateUtils.js";
@@ -207,5 +208,16 @@ export const verifyLoginCode = async (req, res) => {
   } catch (error) {
     console.error("Verify login error:", error.message);
     return res.status(500).json({ message: "Couldn't sign you in right now. Please try again." });
+  }
+};
+
+// @desc   Notes the therapist has shared with this client (never private notes)
+// @route  GET /api/portal/notes
+export const getClientNotes = async (req, res) => {
+  try {
+    return res.status(200).json({ notes: await getSharedNotesForClient(req.client) });
+  } catch (error) {
+    console.error("Client notes error:", error.message);
+    return res.status(500).json({ message: "Couldn't load your notes" });
   }
 };

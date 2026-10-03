@@ -1,17 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useSocketEvents } from "../../hooks/useSocket";
 import { getUnreadCount } from "../../api/messagesApi";
 import ProfileMenu from "./ProfileMenu";
-import { formatShortDate, formatTime } from "../appointments/appointmentUtils";
-
-const BellIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-  </svg>
-);
+import NotificationBell from "./NotificationBell";
 
 const ChatIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -37,11 +30,9 @@ const MenuIcon = () => (
   </svg>
 );
 
-const Topbar = ({ therapist, recentActivity = [], searchValue, onSearchChange, onMenuClick }) => {
-  const [showNotifications, setShowNotifications] = useState(false);
+const Topbar = ({ therapist, searchValue, onSearchChange, onMenuClick }) => {
   const { token } = useAuth();
   const [unread, setUnread] = useState(0);
-  const notifRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
@@ -58,15 +49,6 @@ const Topbar = ({ therapist, recentActivity = [], searchValue, onSearchChange, o
     "messages:read": ({ reader }) =>
       reader === "therapist" && getUnreadCount().then((res) => setUnread(res.data.count)).catch(() => {}),
   });
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotifications(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
 
   return (
     <header
@@ -114,57 +96,7 @@ const Topbar = ({ therapist, recentActivity = [], searchValue, onSearchChange, o
           )}
         </Link>
 
-        {/* Notifications Dropdown */}
-        <div className="relative" ref={notifRef}>
-          <button
-            onClick={() => setShowNotifications((v) => !v)}
-            className="w-10 h-10 rounded-2xl bg-[#F9F6F0] border border-[#E5DCD3] flex items-center justify-center text-[#6B5B52] hover:border-[#FF9E4C] hover:text-[#D96B00] transition relative"
-            aria-label="Notifications"
-          >
-            <BellIcon />
-            {recentActivity.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#FF9E4C] text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-xs">
-                {recentActivity.length}
-              </span>
-            )}
-          </button>
-
-          {showNotifications && (
-            <div className="absolute right-0 mt-3 w-80 bg-white border border-[#E5DCD3] rounded-3xl shadow-xl py-3 z-30 animate-in fade-in zoom-in-95 duration-150">
-              <div className="px-5 pb-2 border-b border-[#E5DCD3] flex items-center justify-between">
-                <p className="text-xs font-semibold text-[#6B5B52] uppercase tracking-wider">
-                  Recent Bookings
-                </p>
-                <span className="text-[10px] bg-[#FF9E4C]/15 text-[#D96B00] px-2 py-0.5 rounded-full font-medium">
-                  Latest {Math.min(recentActivity.length, 5)}
-                </span>
-              </div>
-
-              <div className="max-h-64 overflow-y-auto divide-y divide-[#F9F6F0]">
-                {recentActivity.length === 0 ? (
-                  <p className="text-sm text-[#6B5B52] px-5 py-6 text-center">No recent activity.</p>
-                ) : (
-                  recentActivity.slice(0, 5).map((s) => (
-                    <Link
-                      key={s.id}
-                      to="/therapist/appointments"
-                      onClick={() => setShowNotifications(false)}
-                      className="block px-5 py-3 hover:bg-[#F9F6F0] transition"
-                    >
-                      <p className="text-sm text-[#2B221E]">
-                        <span className="font-semibold">{s.clientName}</span> booked a session
-                      </p>
-                      {/* s.date is a stored date like 2026-10-03T00:00:00.000Z; show it as "Sat, Oct 3 · 4:00 PM" */}
-                      <p className="text-xs text-[#6B5B52] mt-0.5">
-                        {formatShortDate(String(s.date).slice(0, 10))} · {formatTime(s.startTime)}
-                      </p>
-                    </Link>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+        <NotificationBell />
 
         {/* Quick Add Schedule Button */}
         <Link

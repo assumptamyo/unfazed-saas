@@ -3,11 +3,8 @@ import SessionNote from "../models/SessionNote.js";
 import Payment from "../models/Payment.js";
 import { refundSessionPayment } from "../services/paymentService.js";
 import { getJoinInfo } from "../services/videoService.js";
+import { publish, publishInBackground, EVENTS } from "../services/notificationService.js";
 import { generateAvailableSlots, findAvailableSlot } from "../services/slotService.js";
-import {
-  sendCancellationToClient,
-  sendRescheduleToClient,
-} from "../services/emailService.js";
 import {
   toDateKey,
   dateFromKey,
@@ -266,24 +263,15 @@ export const cancelAppointment = async (req, res) => {
       }
     }
 
-    let emailSent = false;
-    if (notifyClient && session.client?.email) {
-      try {
-        await sendCancellationToClient(
-          session.client.email,
-          session.client.name,
-          req.therapist.name,
-          session.date,
-          session.startTime,
-          session.endTime,
-          reason.trim(),
-          refundedAmount
-        );
-        emailSent = true;
-      } catch (emailError) {
-        console.error("Cancellation email failed:", emailError.message);
-      }
-    }
+    const sent = await publish(EVENTS.SESSION_CANCELLED, {
+      therapistId: req.therapist._id,
+      clientId: session.client?._id,
+      sessionId: session._id,
+      reason: reason.trim(),
+      refundAmount: refundedAmount,
+      notifyClient,
+    });
+    const emailSent = sent.email?.client === "sent";
 
     return res.status(200).json({
       message: "Appointment cancelled",
@@ -335,22 +323,18 @@ export const rescheduleAppointment = async (req, res) => {
     session.statusUpdatedAt = new Date();
     await session.save();
 
-    let emailSent = false;
-    if (notifyClient && session.client?.email) {
-      try {
-        await sendRescheduleToClient(
-          session.client.email,
-          session.client.name,
-          req.therapist.name,
-          previous,
-          { date: dateKey, startTime: slot.startTime, endTime: slot.endTime },
-          message.trim()
-        );
-        emailSent = true;
-      } catch (emailError) {
-        console.error("Reschedule email failed:", emailError.message);
-      }
-    }
+    // A moved session gets its 24-hour reminder again
+    await Session.updateOne({ _id: session._id }, { $unset: { "scheduledNotifications.reminderSentAt": 1 } });
+
+    const sent = await publish(EVENTS.SESSION_RESCHEDULED, {
+      therapistId: req.therapist._id,
+      clientId: session.client?._id,
+      sessionId: session._id,
+      previous,
+      message: message.trim(),
+      notifyClient,
+    });
+    const emailSent = sent.email?.client === "sent";
 
     return res.status(200).json({
       message: "Appointment rescheduled",

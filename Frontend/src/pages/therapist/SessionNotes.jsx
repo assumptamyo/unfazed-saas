@@ -11,6 +11,7 @@ const TABS = [
   { key: "all", label: "All notes" },
   { key: "draft", label: "Drafts" },
   { key: "signed", label: "Signed" },
+  { key: "shared", label: "Shared with clients" },
 ];
 
 const PendingCard = ({ item }) => (
@@ -37,7 +38,7 @@ const NoteCard = ({ note }) => {
   const signed = note.status === "signed";
   return (
     <Link
-      to={`/therapist/notes/session/${note.sessionId}`}
+      to={`/therapist/notes/session/${note.sessionId}${note.visibility === "shared" ? "?v=shared" : ""}`}
       className="group block rounded-3xl bg-white border border-[#EFE6DA] p-5 hover:border-[#FFD9AE] hover:shadow-[0_10px_30px_rgba(217,107,0,0.08)] transition-all animate-fade-up"
     >
       <div className="flex items-start gap-3">
@@ -50,6 +51,9 @@ const NoteCard = ({ note }) => {
             <span className="text-[10px] font-semibold tracking-wider text-[#8A7A6D] bg-[#F3EEE6] px-2 py-0.5 rounded-full">
               {TEMPLATES[note.template]?.label}
             </span>
+            {note.visibility === "shared" && (
+              <span className="text-[10px] font-semibold text-[#5B7A99] bg-[#EEF3F8] px-2 py-0.5 rounded-full">👁 Shared</span>
+            )}
           </div>
           <p className="text-xs text-[#A89C8F] mt-0.5">
             {note.session ? `Session ${formatShortDate(note.session.date)} · ${formatTime(note.session.startTime)}` : "Session removed"}
@@ -101,7 +105,10 @@ const SessionNotes = () => {
       .then(([notesRes, pendingRes]) => {
         if (!alive) return;
         setNotes(notesRes.data.notes);
-        setCounts(notesRes.data.counts);
+        setCounts({
+          ...notesRes.data.counts,
+          shared: notesRes.data.notes.filter((n) => n.visibility === "shared").length,
+        });
         setPending(pendingRes.data.pending);
       })
       .catch((err) => alive && setError(apiError(err, "Couldn't load your notes.")));
@@ -115,7 +122,7 @@ const SessionNotes = () => {
     const q = search.trim().toLowerCase();
     return notes.filter(
       (n) =>
-        (tab === "all" || n.status === tab) &&
+        (tab === "all" || (tab === "shared" ? n.visibility === "shared" : n.status === tab)) &&
         (!q || n.client?.name.toLowerCase().includes(q) || n.excerpt.toLowerCase().includes(q))
     );
   }, [notes, tab, search]);

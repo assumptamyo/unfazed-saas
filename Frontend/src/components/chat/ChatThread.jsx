@@ -21,6 +21,8 @@ const ChatThread = ({
   disabledReason,
   compact = false,
   emptyHint,
+  otherTyping = false,
+  onTyping,
 }) => {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -128,6 +130,17 @@ const ChatThread = ({
         )}
       </div>
 
+      {otherTyping && (
+        <div className={`flex items-center gap-2 text-xs text-[#8A7A6D] ${compact ? "px-3 pb-1.5" : "px-6 pb-2"} animate-fade-in`} aria-live="polite">
+          <span className="flex gap-0.5">
+            {[0, 1, 2].map((i) => (
+              <span key={i} className="w-1.5 h-1.5 rounded-full bg-[#C4B8AC] animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+            ))}
+          </span>
+          {otherName} is typing…
+        </div>
+      )}
+
       <div className={`border-t border-[#F0E8DD] bg-white/80 backdrop-blur ${compact ? "p-2.5" : "p-3 sm:p-4"}`}>
         {disabledReason ? (
           <p className="text-xs text-center text-[#A89C8F] py-2">{disabledReason}</p>
@@ -138,7 +151,10 @@ const ChatThread = ({
               rows={1}
               value={draft}
               maxLength={4000}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                onTyping?.();
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();

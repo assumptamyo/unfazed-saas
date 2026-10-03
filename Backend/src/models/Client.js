@@ -27,6 +27,11 @@ const clientSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    // The client can turn off WhatsApp reminders when booking (or the therapist can, on request)
+    whatsappOptIn: {
+      type: Boolean,
+      default: true,
+    },
     status: {
       type: String,
       enum: ["active", "inactive"],

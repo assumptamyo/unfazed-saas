@@ -5,6 +5,7 @@ import { getClientById, restoreClient } from "../../api/clientApi";
 import { getNotes } from "../../api/notesApi";
 import { sendPortalLink } from "../../api/messagesApi";
 import DashboardLayout from "../../components/dashboard/DashboardLayout";
+import ClientContact from "../../components/clients/ClientContact";
 import { ArchiveClientModal, DeleteClientModal } from "../../components/clients/ClientActionModals";
 import { useToast } from "../../context/toastContext";
 import { apiError } from "../../components/appointments/appointmentUtils";
@@ -130,7 +131,7 @@ const ClientDetail = () => {
                 {client.name}
               </h1>
               <p className="text-sm text-[#6B5B52]">{client.email}</p>
-              {client.phone && <p className="text-sm text-[#A89C8F]">{client.phone}</p>}
+              <ClientContact client={client} onSaved={(c) => setClient((prev) => ({ ...prev, ...c }))} />
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -265,12 +266,16 @@ const ClientDetail = () => {
                       n.status === "signed" ? "bg-[#4F7161]" : "bg-[#FFB877]"
                     }`}
                   />
-                  <Link to={`/therapist/notes/session/${n.sessionId}`} className="group block">
+                  <Link
+                    to={`/therapist/notes/session/${n.sessionId}${n.visibility === "shared" ? "?v=shared" : ""}`}
+                    className="group block"
+                  >
                     <p className="text-sm font-medium text-[#2B221E] group-hover:text-[#D96B00] transition">
                       {n.session ? format(parseISO(n.session.date), "EEE, MMM d, yyyy") : "Session removed"}
                       <span className="text-xs font-normal text-[#A89C8F]">
                         {" "}
-                        · {n.status === "signed" ? "Signed" : "Draft"}
+                        · {n.visibility === "shared" ? "Shared with client · " : ""}
+                        {n.status === "signed" ? "Signed" : "Draft"}
                       </span>
                     </p>
                     <p className="text-sm text-[#6B5B52] line-clamp-2 mt-0.5">{n.excerpt || "Empty draft"}</p>

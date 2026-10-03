@@ -3,10 +3,10 @@ import Therapist from "../models/Therapist.js";
 import { paymentsEnabled, isTestMode } from "../services/razorpayService.js";
 import { expireStaleHolds, refundSessionPayment } from "../services/paymentService.js";
 import { generateReceiptPdf } from "../services/receiptService.js";
-import { sendCancellationToClient } from "../services/emailService.js";
 import { sendPdf } from "./paymentController.js";
 import { toDateKey } from "../utils/dateUtils.js";
 import { canAccess, upgradeRequired } from "../services/entitlementService.js";
+import { publish, publishInBackground, EVENTS } from "../services/notificationService.js";
 import Session from "../models/Session.js";
 
 const MAX_FEE_RUPEES = 100000;
@@ -174,20 +174,13 @@ export const refundPaymentById = async (req, res) => {
       session.cancellation = { cancelledAt: new Date(), cancelledBy: "therapist", reason };
       await session.save();
       cancelledSession = true;
-      try {
-        await sendCancellationToClient(
-          payment.booking.clientEmail,
-          payment.booking.clientName,
-          req.therapist.name,
-          session.date,
-          session.startTime,
-          session.endTime,
-          reason,
-          payment.amount
-        );
-      } catch (emailError) {
-        console.error("Refund email failed:", emailError.message);
-      }
+      await publish(EVENTS.SESSION_CANCELLED, {
+        therapistId: req.therapist._id,
+        clientId: session.client,
+        sessionId: session._id,
+        reason,
+        refundAmount: payment.amount,
+      });
     }
 
     return res.status(200).json({ message: "Refund issued", cancelledSession, amount: payment.amount });

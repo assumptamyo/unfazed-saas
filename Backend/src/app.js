@@ -11,6 +11,7 @@ import { paymentRouter, receiptRouter, billingRouter } from "./routes/paymentRou
 import { messageRouter, portalRouter } from "./routes/messageRoutes.js";
 import subscriptionRoutes from "./routes/subscriptionRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
 
 
 const app = express();
@@ -51,6 +52,7 @@ app.use("/api/portal", portalRouter);
 
 app.use("/api/subscription", subscriptionRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.use(errorHandler);
 

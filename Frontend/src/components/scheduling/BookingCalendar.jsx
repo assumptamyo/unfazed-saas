@@ -32,7 +32,17 @@ const EMPTY_FORM = {
   occupation: "",
   presentingConcern: "",
   consentAgreed: false,
+  whatsappOptIn: true,
 };
+
+// 10-digit Indian mobile (the +91 is shown as a fixed prefix)
+const mobileDigits = (value) => {
+  let d = value.replace(/\D/g, "");
+  if (d.length > 10 && d.startsWith("91")) d = d.slice(2);
+  if (d.length > 10 && d.startsWith("0")) d = d.slice(1);
+  return d.slice(0, 10);
+};
+const isValidMobile = (digits) => /^[6-9]\d{9}$/.test(digits);
 
 const formatDayLabel = (dateStr) => {
   const date = parseISO(dateStr);
@@ -45,54 +55,91 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Shown after a successful booking
 const Confirmation = ({ booking, onDone }) => (
-  <div className="relative overflow-hidden bg-white border border-[#D7E5DC] rounded-2xl p-6 sm:p-8 text-center animate-fade-up" style={labelFont}>
+  <div
+    className="relative overflow-hidden bg-white border border-[#D7E5DC] rounded-2xl p-6 sm:p-8 text-center animate-fade-up"
+    style={labelFont}
+  >
     <div
       className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-72 rounded-full opacity-40 blur-3xl"
-      style={{ background: "radial-gradient(circle, #8DB3A1 0%, transparent 70%)" }}
+      style={{
+        background: "radial-gradient(circle, #8DB3A1 0%, transparent 70%)",
+      }}
     />
     <div className="relative">
-      <div className="w-14 h-14 mx-auto rounded-full bg-[#4F7161] text-white text-2xl flex items-center justify-center mb-4">✓</div>
-      <h3 className="text-2xl text-[#2B221E] mb-1" style={{ fontFamily: "Literata, serif" }}>
+      <div className="w-14 h-14 mx-auto rounded-full bg-[#4F7161] text-white text-2xl flex items-center justify-center mb-4">
+        ✓
+      </div>
+      <h3
+        className="text-2xl text-[#2B221E] mb-1"
+        style={{ fontFamily: "Literata, serif" }}
+      >
         You're booked!
       </h3>
-      <p className="text-sm text-[#6B6059] mb-5">A confirmation email is on its way to you.</p>
 
-      <div className="inline-flex flex-col items-center rounded-2xl bg-[#FBF8F3] border border-[#EFE6DA] px-6 py-4 mb-5">
-        <span className="text-[#2B221E] font-medium">{format(parseISO(booking.date), "EEEE, MMMM d")}</span>
-        <span className="text-sm text-[#6B6059]">
-          {booking.startTime} – {booking.endTime}
+           <div className="inline-flex flex-col items-center rounded-2xl bg-[#FBF8F3] border border-[#EFE6DA] px-6 py-4 mt-4 mb-5">
+        <span className="text-[#2B221E] font-medium">
+          {format(parseISO(booking.date), "EEEE, MMMM d")}
         </span>
-        {booking.amount > 0 && (
-          <span className="mt-2 text-xs font-semibold text-[#4F7161] bg-[#EEF3F0] px-2.5 py-1 rounded-full">
-            Paid {formatRupees(booking.amount)}
+        <div className="flex items-center gap-3 mt-1">
+          <span className="text-sm text-[#6B6059]">
+            {booking.startTime} – {booking.endTime}
           </span>
-        )}
+          {booking.amount > 0 && (
+            <span className="text-xs font-semibold text-[#4F7161] bg-[#EEF3F0] px-2.5 py-1 rounded-full">
+              Paid {formatRupees(booking.amount)}
+            </span>
+          )}
+        </div>
       </div>
 
-      <p className="text-xs text-[#8A7A6D] mb-4">Your session is by video — join it from your client space.</p>
-      <div className="flex flex-col sm:flex-row gap-2 justify-center">
+      <p className="text-xs text-[#8A7A6D] mb-4">
+        Your session is by video — join it from your client space.
+      </p>
+      <div className="flex flex-col items-center gap-3">
         <Link
           to="/portal"
-          className="px-5 py-2.5 rounded-full text-sm font-semibold bg-[#FF9E4C] text-[#211A16] hover:bg-[#FFB877] transition"
+          className="w-full max-w-xs inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full text-sm font-semibold bg-[#FF9E4C] text-[#211A16] hover:bg-[#FFB877] transition whitespace-nowrap"
         >
           Open your client space
+          <span aria-hidden="true">→</span>
         </Link>
-        {booking.receiptToken && (
-          <a
-            href={receiptUrl(booking.receiptToken)}
-            target="_blank"
-            rel="noreferrer"
-            className="px-5 py-2.5 rounded-full text-sm font-semibold bg-[#211A16] text-white hover:bg-[#3A2E27] transition"
+
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm">
+          {booking.receiptToken && (
+            <a
+              href={receiptUrl(booking.receiptToken)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 font-medium text-[#2B221E] hover:text-[#D96B00] transition whitespace-nowrap"
+            >
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Download receipt
+            </a>
+          )}
+          {booking.receiptToken && (
+            <span className="w-px h-4 bg-[#EFE6DA]" aria-hidden="true" />
+          )}
+          <button
+            onClick={onDone}
+            className="font-medium text-[#8A7A6D] hover:text-[#D96B00] transition whitespace-nowrap"
           >
-            Download receipt
-          </a>
-        )}
-        <button
-          onClick={onDone}
-          className="px-5 py-2.5 rounded-full text-sm font-medium text-[#6B6059] border border-[#EFE6DA] hover:border-[#FF9E4C] transition"
-        >
-          Book another session
-        </button>
+            Book another session
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -133,7 +180,9 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
         const daysWithSlots = res.data.slots.filter((d) => d.slots.length > 0);
         setDaySlots(daysWithSlots);
         setSelectedDate((current) =>
-          daysWithSlots.some((d) => d.date === current) ? current : daysWithSlots[0]?.date ?? null
+          daysWithSlots.some((d) => d.date === current)
+            ? current
+            : (daysWithSlots[0]?.date ?? null),
         );
       })
       .catch((err) => {
@@ -146,7 +195,8 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
   }, [slug, reloadKey]);
 
   const refreshSlots = () => setReloadKey((k) => k + 1);
-  const currentDaySlots = daySlots?.find((d) => d.date === selectedDate)?.slots || [];
+  const currentDaySlots =
+    daySlots?.find((d) => d.date === selectedDate)?.slots || [];
 
   const handleSlotClick = (slot) => {
     setSelectedSlot(slot);
@@ -186,7 +236,7 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
         }
       }
       setBookingError(
-        "Your payment was received. We're still confirming your booking — you'll get an email shortly."
+        "Your payment was received. We're still confirming your booking — you'll get an email shortly.",
       );
     } finally {
       setBooking(false);
@@ -197,7 +247,9 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
     const loaded = await loadRazorpay();
     if (!loaded) {
       await releaseHold(checkout.order.id).catch(() => {});
-      setBookingError("Couldn't load the payment window. Check your connection and try again.");
+      setBookingError(
+        "Couldn't load the payment window. Check your connection and try again.",
+      );
       return;
     }
 
@@ -214,13 +266,17 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
       modal: {
         ondismiss: () => {
           releaseHold(checkout.order.id).catch(() => {});
-          setBookingError("Payment cancelled — your slot has been released. You can try again.");
+          setBookingError(
+            "Payment cancelled — your slot has been released. You can try again.",
+          );
           setBooking(false);
         },
       },
     });
     rzp.on("payment.failed", (resp) => {
-      setBookingError(resp.error?.description || "Payment failed. Please try another method.");
+      setBookingError(
+        resp.error?.description || "Payment failed. Please try another method.",
+      );
     });
     rzp.open();
   };
@@ -238,11 +294,16 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
 
   const handleBookingSubmit = async (e) => {
     e.preventDefault();
+    if (!isValidMobile(form.clientPhone)) {
+      setBookingError("Please enter a valid 10-digit mobile number.");
+      return;
+    }
     setBooking(true);
     setBookingError("");
     try {
       const res = await startBooking(slug, {
         ...form,
+        clientPhone: `+91${form.clientPhone}`,
         date: selectedDate,
         startTime: selectedSlot.startTime,
         clientToken: getClientToken() || undefined,
@@ -258,7 +319,10 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
       }
       await handleBooked(res.data);
     } catch (err) {
-      setBookingError(err.response?.data?.message || "Something went wrong. Please try again.");
+      setBookingError(
+        err.response?.data?.message ||
+          "Something went wrong. Please try again.",
+      );
       if (err.response?.status === 409) refreshSlots();
       setBooking(false);
     }
@@ -279,7 +343,10 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
         setBookingError(err.response.data.message);
         refreshSlots();
       } else {
-        setCodeError(err.response?.data?.message || "Couldn't check the code. Please try again.");
+        setCodeError(
+          err.response?.data?.message ||
+            "Couldn't check the code. Please try again.",
+        );
         setCode("");
       }
       setBooking(false);
@@ -311,7 +378,9 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
   }
 
   if (confirmed) {
-    return <Confirmation booking={confirmed} onDone={() => setConfirmed(null)} />;
+    return (
+      <Confirmation booking={confirmed} onDone={() => setConfirmed(null)} />
+    );
   }
 
   if (daySlots.length === 0) {
@@ -323,11 +392,16 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
   }
 
   return (
-    <div className="bg-white border border-[#EFE6DA] rounded-2xl p-6" style={labelFont}>
+    <div
+      className="bg-white border border-[#EFE6DA] rounded-2xl p-6"
+      style={labelFont}
+    >
       {fee > 0 && (
         <div className="flex items-center justify-between gap-3 mb-5 pb-4 border-b border-[#F3EBDF]">
           <span className="text-sm text-[#6B6059]">Session fee</span>
-          <span className="text-lg font-semibold text-[#2B221E]">{formatRupees(fee)}</span>
+          <span className="text-lg font-semibold text-[#2B221E]">
+            {formatRupees(fee)}
+          </span>
         </div>
       )}
 
@@ -380,22 +454,37 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
           <div className="w-12 h-12 mx-auto rounded-2xl bg-[#FFF3E6] text-[#D96B00] text-xl flex items-center justify-center mb-3">
             ✉
           </div>
-          <h3 className="text-lg text-[#2B221E]" style={{ fontFamily: "Literata, serif" }}>
+          <h3
+            className="text-lg text-[#2B221E]"
+            style={{ fontFamily: "Literata, serif" }}
+          >
             Check your email
           </h3>
           <p className="text-sm text-[#6B6059] mt-1 mb-5">
-            We sent a 6-digit code to <strong className="text-[#2B221E]">{verify.email}</strong>.
+            We sent a 6-digit code to{" "}
+            <strong className="text-[#2B221E]">{verify.email}</strong>.
             <br />
             Your time is held for 10 minutes.
           </p>
-          <CodeInput value={code} onChange={setCode} onComplete={submitCode} disabled={verifying} />
-          {codeError && <p className="text-sm text-[#9C3B2E] mt-3">{codeError}</p>}
+          <CodeInput
+            value={code}
+            onChange={setCode}
+            onComplete={submitCode}
+            disabled={verifying}
+          />
+          {codeError && (
+            <p className="text-sm text-[#9C3B2E] mt-3">{codeError}</p>
+          )}
           <button
             onClick={() => submitCode()}
             disabled={code.length !== 6 || verifying || booking}
             className="mt-5 w-full bg-[#FF9E4C] text-[#211A16] font-medium px-6 py-2.5 rounded-full hover:bg-[#D96B00]/80 transition disabled:opacity-50"
           >
-            {verifying || booking ? "Confirming…" : fee > 0 ? "Confirm & continue to payment" : "Confirm booking"}
+            {verifying || booking
+              ? "Confirming…"
+              : fee > 0
+                ? "Confirm & continue to payment"
+                : "Confirm booking"}
           </button>
           <div className="flex items-center justify-center gap-4 mt-4 text-xs">
             <button
@@ -406,19 +495,28 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
               {resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
             </button>
             <span className="text-[#E5DCD3]">|</span>
-            <button onClick={changeEmail} className="font-medium text-[#6B6059] hover:text-[#2B221E]">
+            <button
+              onClick={changeEmail}
+              className="font-medium text-[#6B6059] hover:text-[#2B221E]"
+            >
               Wrong email? Change it
             </button>
           </div>
-          <p className="text-[11px] text-[#A89C8F] mt-4">Can't find it? Check your spam or promotions folder.</p>
+          <p className="text-[11px] text-[#A89C8F] mt-4">
+            Can't find it? Check your spam or promotions folder.
+          </p>
         </div>
       )}
 
       {/* Booking form - appears once a slot is picked */}
       {showForm && selectedSlot && !verify && (
-        <form onSubmit={handleBookingSubmit} className="mt-5 pt-5 border-t border-[#EFE6DA] space-y-3">
+        <form
+          onSubmit={handleBookingSubmit}
+          className="mt-5 pt-5 border-t border-[#EFE6DA] space-y-3"
+        >
           <p className="text-sm text-[#6B6059] mb-2">
-            Booking {formatDayLabel(selectedDate)}, {selectedSlot.startTime}–{selectedSlot.endTime}
+            Booking {formatDayLabel(selectedDate)}, {selectedSlot.startTime}–
+            {selectedSlot.endTime}
             {therapistName && ` with ${therapistName}`}
           </p>
 
@@ -449,7 +547,9 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
               Did you mean{" "}
               <button
                 type="button"
-                onClick={() => setForm({ ...form, clientEmail: emailSuggestion })}
+                onClick={() =>
+                  setForm({ ...form, clientEmail: emailSuggestion })
+                }
                 className="font-semibold underline underline-offset-2 hover:text-[#8A5A12]"
               >
                 {emailSuggestion}
@@ -457,13 +557,46 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
               ?
             </p>
           )}
-          <input
-            type="tel"
-            placeholder="Phone (optional)"
-            value={form.clientPhone}
-            onChange={(e) => setForm({ ...form, clientPhone: e.target.value })}
-            className={inputClass}
-          />
+          <div>
+            <div className="flex items-stretch rounded-lg border border-[#EFE6DA] bg-[#FBF8F3] focus-within:ring-2 focus-within:ring-[#FF9E4C] overflow-hidden">
+              <span className="flex items-center px-3 text-sm text-[#6B6059] border-r border-[#EFE6DA] select-none">
+                +91
+              </span>
+              <input
+                type="tel"
+                inputMode="numeric"
+                autoComplete="tel-national"
+                required
+                placeholder="Mobile number"
+                aria-label="Mobile number"
+                value={form.clientPhone}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    clientPhone: mobileDigits(e.target.value),
+                  })
+                }
+                className="flex-1 min-w-0 bg-transparent px-3 py-2.5 text-sm focus:outline-none"
+              />
+            </div>
+            {form.clientPhone.length === 10 &&
+              !isValidMobile(form.clientPhone) && (
+                <p className="text-xs text-[#9C3B2E] mt-1 px-1">
+                  Indian mobile numbers start with 6, 7, 8 or 9.
+                </p>
+              )}
+            <label className="flex items-center gap-2 text-xs text-[#6B6059] mt-2 px-1">
+              <input
+                type="checkbox"
+                checked={form.whatsappOptIn}
+                onChange={(e) =>
+                  setForm({ ...form, whatsappOptIn: e.target.checked })
+                }
+                className="accent-[#FF9E4C]"
+              />
+              Send me booking updates and reminders on WhatsApp
+            </label>
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <input
@@ -499,7 +632,9 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
             rows={3}
             placeholder="What brings you to therapy? (optional)"
             value={form.presentingConcern}
-            onChange={(e) => setForm({ ...form, presentingConcern: e.target.value })}
+            onChange={(e) =>
+              setForm({ ...form, presentingConcern: e.target.value })
+            }
             className={inputClass}
           />
 
@@ -508,12 +643,15 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
               type="checkbox"
               required
               checked={form.consentAgreed}
-              onChange={(e) => setForm({ ...form, consentAgreed: e.target.checked })}
+              onChange={(e) =>
+                setForm({ ...form, consentAgreed: e.target.checked })
+              }
               className="mt-0.5 accent-[#FF9E4C]"
             />
             <span>
-              I consent to sharing this information with my therapist for the purpose of receiving care, and
-              understand it will be kept confidential.
+              I consent to sharing this information with my therapist for the
+              purpose of receiving care, and understand it will be kept
+              confidential.
             </span>
           </label>
 
@@ -522,16 +660,16 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
             disabled={booking}
             className="w-full bg-[#FF9E4C] text-[#211A16] font-medium px-6 py-2.5 rounded-full hover:bg-[#D96B00]/80 transition disabled:opacity-60"
           >
-            {booking ? "Please wait…" : fee > 0 ? `Continue — ${formatRupees(fee)}` : "Continue"}
+            {booking
+              ? "Please wait…"
+              : fee > 0
+                ? `Continue — ${formatRupees(fee)}`
+                : "Continue"}
           </button>
           <p className="text-[11px] text-center text-[#A89C8F]">
-            We'll email you a code to confirm it's you. Nothing is booked until you enter it.
+            We'll email you a code to confirm it's you. Nothing is booked until
+            you enter it.
           </p>
-          {fee > 0 && (
-            <p className="text-[11px] text-center text-[#A89C8F]">
-              🔒 Secure payment by Razorpay · UPI, cards, net banking. Your slot is held for 15 minutes.
-            </p>
-          )}
         </form>
       )}
     </div>

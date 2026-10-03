@@ -289,3 +289,35 @@ export const sendSharedNoteEmail = async (to, clientName, therapistName, portalU
     `
   );
 };
+
+// 24 hours before a session
+export const sendSessionReminderToClient = async (to, clientName, therapistName, date, startTime, endTime, portalUrl) => {
+  await send(
+    to,
+    `Reminder: your session with ${therapistName} is tomorrow`,
+    `
+      <h2 style="margin:0 0 12px;">Hi ${escapeHtml(clientName)},</h2>
+      <p>A quick reminder of your video session with <strong>${escapeHtml(therapistName)}</strong>.</p>
+      ${sessionBlock(date, startTime, endTime)}
+      <p>Find a quiet, private space. The room opens 10 minutes before the start.</p>
+      ${portalUrl ? button(portalUrl, "Open your client space") : ""}
+      <p style="color:#A89C8F; font-size:13px;">Can't make it? Message your therapist from your client space.</p>
+    `
+  );
+};
+
+// A short while after a completed session. Contains no clinical details.
+export const sendFollowUpToClient = async (to, clientName, therapistName, bookingUrl, portalUrl) => {
+  await send(
+    to,
+    `Thank you for your session with ${therapistName}`,
+    `
+      <h2 style="margin:0 0 12px;">Hi ${escapeHtml(clientName)},</h2>
+      <p>Thank you for your session with <strong>${escapeHtml(therapistName)}</strong>. Take a moment for yourself today.</p>
+      <p>If anything came up afterwards, you can send a message from your client space.
+      When you're ready, you can also book your next session.</p>
+      ${portalUrl ? button(portalUrl, "Open your client space") : ""}
+      ${bookingUrl ? `<p><a href="${escapeHtml(bookingUrl)}" style="color:#D96B00;">Book your next session →</a></p>` : ""}
+    `
+  );
+};

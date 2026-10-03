@@ -2,6 +2,7 @@ import express from "express";
 import { param, body } from "express-validator";
 import authMiddleware from "../middleware/authMiddleware.js";
 import validateRequest from "../middleware/validateRequest.js";
+import { normalizeIndianMobile } from "../utils/phone.js";
 import {
   getClients,
   getClientById,
@@ -30,6 +31,11 @@ router.put(
   [
     param("id").isMongoId().withMessage("Invalid client id"),
     body("status").optional().isIn(["active", "inactive"]),
+    body("phone")
+      .optional()
+      .custom((v) => v === "" || Boolean(normalizeIndianMobile(v)))
+      .withMessage("Enter a valid 10-digit Indian mobile number"),
+    body("whatsappOptIn").optional().isBoolean({ strict: true }),
   ],
   validateRequest,
   updateClient

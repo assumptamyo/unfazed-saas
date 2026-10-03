@@ -3,10 +3,12 @@ import Session from "../models/Session.js";
 import SessionNote from "../models/SessionNote.js";
 import Message from "../models/Message.js";
 import { dateFromKey, todayKey, toDateTime } from "../utils/dateUtils.js";
-import { sendCancellationToClient, sendPortalLinkEmail } from "../services/emailService.js";
+import { sendPortalLinkEmail } from "../services/emailService.js";
 import { createPortalLink } from "../services/portalService.js";
 import { canAccess, upgradeRequired } from "../services/entitlementService.js";
+import { publish, publishInBackground, EVENTS } from "../services/notificationService.js";
 import { refundSessionPayment } from "../services/paymentService.js";
+import { normalizeIndianMobile } from "../utils/phone.js";
 
 // @desc   Get all clients for the logged-in therapist (with search/filter)
 // @route  GET /api/clients
@@ -127,15 +129,16 @@ export const getClientById = async (req, res) => {
   }
 };
 
-// @desc   Update a client's tags or phone (status is no longer manually settable)
+// @desc   Update a client's tags, phone or WhatsApp preference (status is no longer manually settable)
 // @route  PUT /api/clients/:id
 export const updateClient = async (req, res) => {
   try {
-    const allowedFields = ["tags", "phone"];
+    const allowedFields = ["tags", "phone", "whatsappOptIn"];
     const updates = {};
     allowedFields.forEach((field) => {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
     });
+    if (updates.phone) updates.phone = normalizeIndianMobile(updates.phone);
 
     const client = await Client.findOneAndUpdate(
       { _id: req.params.id, therapist: req.therapist._id },
@@ -192,22 +195,13 @@ export const archiveClient = async (req, res) => {
         console.error("Archive refund failed:", refundError.message);
       }
 
-      if (notifyClient) {
-        try {
-          await sendCancellationToClient(
-            client.email,
-            client.name,
-            req.therapist.name,
-            session.date,
-            session.startTime,
-            session.endTime,
-            "",
-            refundedAmount
-          );
-        } catch (emailError) {
-          console.error("Archive cancellation email failed:", emailError.message);
-        }
-      }
+      await publish(EVENTS.SESSION_CANCELLED, {
+        therapistId: req.therapist._id,
+        clientId: client._id,
+        sessionId: session._id,
+        refundAmount: refundedAmount,
+        notifyClient,
+      });
     }
 
     client.archivedAt = now;

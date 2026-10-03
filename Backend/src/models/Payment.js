@@ -42,6 +42,7 @@ const paymentSchema = new mongoose.Schema(
       clientName: { type: String, required: true },
       clientEmail: { type: String, required: true },
       clientPhone: { type: String, default: "" },
+      whatsappOptIn: { type: Boolean, default: true },
       date: { type: Date, required: true },
       startTime: { type: String, required: true },
       endTime: { type: String, required: true },

@@ -4,6 +4,7 @@ import { format, parseISO } from "date-fns";
 import { getNoteForSession, saveNoteDraft } from "../../api/notesApi";
 import { TEMPLATES, SECTIONS, emptySections } from "./noteTemplates";
 import { useEntitlement } from "../../context/entitlementContext";
+import RichTextEditor from "./RichTextEditor";
 
 const AUTOSAVE_DELAY = 1200;
 
@@ -192,11 +193,21 @@ const LiveNotesPanel = ({ sessionId }) => {
                     </span>
                     <span className="text-xs font-semibold text-[#2B221E]">{s.title}</span>
                   </label>
-                  <GrowingTextarea
-                    value={sections[key]}
-                    placeholder={s.placeholder}
-                    onChange={(v) => edit(() => setSections((prev) => ({ ...prev, [key]: v })))}
-                  />
+                  {key === "body" ? (
+                    <RichTextEditor
+                      compact
+                      minHeight={200}
+                      value={sections[key]}
+                      placeholder={s.placeholder}
+                      onChange={(v) => edit(() => setSections((prev) => ({ ...prev, [key]: v })))}
+                    />
+                  ) : (
+                    <GrowingTextarea
+                      value={sections[key]}
+                      placeholder={s.placeholder}
+                      onChange={(v) => edit(() => setSections((prev) => ({ ...prev, [key]: v })))}
+                    />
+                  )}
                 </div>
               );
             })}

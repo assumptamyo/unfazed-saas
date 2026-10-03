@@ -116,6 +116,8 @@ const SessionRoom = ({ session, other, me, backTo, backLabel, join, displayName,
               me={me}
               otherName={other?.name || ""}
               onSend={conversation.sendText}
+        otherTyping={conversation.otherTyping}
+        onTyping={conversation.notifyTyping}
               emptyHint="Share a link or a quick note here during the session."
             />
           </div>

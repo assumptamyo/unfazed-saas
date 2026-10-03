@@ -17,6 +17,7 @@ import {
   cancelBookingRequest,
 } from "../controllers/bookingController.js";
 import { getDashboardStats } from "../controllers/dashboardController.js";
+import { normalizeIndianMobile } from "../utils/phone.js";
 
 const router = express.Router();
 
@@ -62,6 +63,10 @@ router.post(
   [
     body("clientName").trim().notEmpty().withMessage("Name is required"),
     body("clientEmail").isEmail().withMessage("A valid email is required"),
+    body("clientPhone")
+      .custom((v) => Boolean(normalizeIndianMobile(v)))
+      .withMessage("Enter a valid 10-digit Indian mobile number"),
+    body("whatsappOptIn").optional().isBoolean({ strict: true }),
     body("date").isISO8601().withMessage("Valid date is required"),
     body("startTime").matches(/^([01]\d|2[0-3]):([0-5]\d)$/).withMessage("Invalid startTime"),
     body("consentAgreed").isBoolean({ strict: true }).withMessage("Consent confirmation is required"),

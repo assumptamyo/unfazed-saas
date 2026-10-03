@@ -6,7 +6,7 @@ import BookingRequest from "../models/BookingRequest.js";
 import { findAvailableSlot } from "../services/slotService.js";
 import { paymentsEnabled } from "../services/razorpayService.js";
 import { startCheckout, upsertClientForBooking } from "../services/paymentService.js";
-import { createPortalLink, issueClientToken } from "../services/portalService.js";
+import { issueClientToken } from "../services/portalService.js";
 import {
   generateCode,
   hashCode,
@@ -16,11 +16,9 @@ import {
 } from "../services/codeService.js";
 import { dateFromKey, toDateKey } from "../utils/dateUtils.js";
 import { canAccess } from "../services/entitlementService.js";
-import {
-  sendBookingConfirmationToClient,
-  sendNewBookingNotificationToTherapist,
-  sendVerificationCodeEmail,
-} from "../services/emailService.js";
+import { publish, publishInBackground, EVENTS } from "../services/notificationService.js";
+import { sendVerificationCodeEmail } from "../services/emailService.js";
+import { normalizeIndianMobile } from "../utils/phone.js";
 
 const slotTakenResponse = (res) =>
   res.status(409).json({ message: "That time is no longer available. Please choose another slot." });
@@ -83,31 +81,12 @@ const completeBooking = async (therapist, booking, res) => {
     notes: booking.notes,
   });
 
-  // Fire confirmation emails - don't block the booking response if these fail
-  try {
-    const portalUrl = await createPortalLink(client);
-    await sendBookingConfirmationToClient(
-      client.email,
-      client.name,
-      therapist.name,
-      dateKey,
-      session.startTime,
-      session.endTime,
-      null,
-      portalUrl
-    );
-    await sendNewBookingNotificationToTherapist(
-      therapist.email,
-      therapist.name,
-      client.name,
-      client.email,
-      dateKey,
-      session.startTime,
-      session.endTime
-    );
-  } catch (emailError) {
-    console.error("Booking email failed:", emailError.message);
-  }
+  // Notifications (emails, WhatsApp, the therapist's bell) are handled by the NotificationService
+  publishInBackground(EVENTS.BOOKING_CONFIRMED, {
+    therapistId: therapist._id,
+    clientId: client._id,
+    sessionId: session._id,
+  });
 
   return res.status(201).json({
     message: "Session booked successfully",
@@ -151,7 +130,8 @@ export const startBooking = async (req, res) => {
     const booking = {
       clientName: b.clientName,
       clientEmail: b.clientEmail.toLowerCase(),
-      clientPhone: b.clientPhone || "",
+      clientPhone: normalizeIndianMobile(b.clientPhone),
+      whatsappOptIn: b.whatsappOptIn !== false,
       date: dateFromKey(dateKey),
       startTime: slot.startTime,
       endTime: slot.endTime,

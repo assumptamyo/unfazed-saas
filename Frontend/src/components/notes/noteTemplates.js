@@ -63,9 +63,12 @@ export const SECTIONS = {
 
 export const emptySections = () => Object.fromEntries(Object.keys(SECTIONS).map((k) => [k, ""]));
 
+// "body" holds rich text (HTML); count the words, not the tags
+const plain = (key, value = "") => (key === "body" ? value.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ") : value);
+
 export const countWords = (template, sections) =>
   TEMPLATES[template].sections
-    .map((k) => sections[k] || "")
+    .map((k) => plain(k, sections[k] || ""))
     .join(" ")
     .trim()
     .split(/\s+/)

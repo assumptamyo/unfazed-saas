@@ -1,8 +1,6 @@
 import SessionNote, { NOTE_TEMPLATES, NOTE_SECTION_KEYS } from "../models/SessionNote.js";
-import Client from "../models/Client.js";
 import { sanitizeRichText, richTextToPlain } from "../utils/richText.js";
-import { createPortalLink } from "../services/portalService.js";
-import { sendSharedNoteEmail } from "../services/emailService.js";
+import { publishInBackground, EVENTS } from "../services/notificationService.js";
 import Session from "../models/Session.js";
 import { toDateKey, addDaysToKey, todayKey, dateFromKey } from "../utils/dateUtils.js";
 import { canAccess, upgradeRequired } from "../services/entitlementService.js";
@@ -292,14 +290,11 @@ export const signNote = async (req, res) => {
 
     // Let the client know a note is waiting in their space (the email never contains the note)
     if (note.visibility === "shared") {
-      try {
-        const client = await Client.findById(note.client._id || note.client);
-        if (client && !client.archivedAt) {
-          await sendSharedNoteEmail(client.email, client.name, req.therapist.name, await createPortalLink(client));
-        }
-      } catch (emailError) {
-        console.error("Shared note email failed:", emailError.message);
-      }
+      publishInBackground(EVENTS.NOTE_SHARED, {
+        therapistId: req.therapist._id,
+        clientId: note.client._id || note.client,
+        sessionId: note.session?._id || note.session,
+      });
     }
 
     return res.status(200).json({

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { useSocketEvents } from "./useSocket";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSocketEvents, emitSocket } from "./useSocket";
 
 // Loads one therapist↔client conversation and keeps it live.
 //   token     - the socket login token (therapist or client)
@@ -13,6 +13,9 @@ export const useConversation = ({ token, clientId, me, fetchPage, send, markRead
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [otherTyping, setOtherTyping] = useState(false);
+  const typingTimer = useRef(null);
+  const lastTypingSent = useRef(0);
 
   useEffect(() => {
     if (!clientId) return undefined;
@@ -40,8 +43,16 @@ export const useConversation = ({ token, clientId, me, fetchPage, send, markRead
   useSocketEvents(token, {
     "message:new": (m) => {
       if (String(m.clientId) !== String(clientId)) return;
+      if (m.sender !== me) setOtherTyping(false);
       addMessage(m);
       if (m.sender !== me) markRead()?.catch?.(() => {});
+    },
+    // The other person is typing: show it for a few seconds after each signal
+    typing: ({ clientId: cid, from }) => {
+      if (String(cid) !== String(clientId) || from === me) return;
+      setOtherTyping(true);
+      clearTimeout(typingTimer.current);
+      typingTimer.current = setTimeout(() => setOtherTyping(false), 3500);
     },
     "messages:read": ({ clientId: cid, reader }) => {
       if (String(cid) !== String(clientId) || reader === me) return;
@@ -62,5 +73,13 @@ export const useConversation = ({ token, clientId, me, fetchPage, send, markRead
     addMessage(saved);
   };
 
-  return { messages, hasMore, loading, error, loadMore, sendText };
+  // Tell the other side we're typing (at most every 2.5 seconds)
+  const notifyTyping = () => {
+    const now = Date.now();
+    if (now - lastTypingSent.current < 2500) return;
+    lastTypingSent.current = now;
+    emitSocket(token, "typing", { clientId });
+  };
+
+  return { messages, hasMore, loading, error, loadMore, sendText, otherTyping, notifyTyping };
 };

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import DashboardLayout from "../../components/dashboard/DashboardLayout";
 import ClientAvatar from "../../components/appointments/ClientAvatar";
@@ -15,6 +15,7 @@ import { TEMPLATES, SECTIONS, emptySections, countWords } from "../../components
 import { apiError, formatLongDate, formatTime } from "../../components/appointments/appointmentUtils";
 import { useToast } from "../../context/toastContext";
 import { useEntitlement } from "../../context/entitlementContext";
+import RichTextEditor, { RichTextView } from "../../components/notes/RichTextEditor";
 
 const AUTOSAVE_DELAY = 1200;
 
@@ -57,8 +58,10 @@ const SaveIndicator = ({ state, savedAt }) => {
   );
 };
 
-const NoteEditor = () => {
+const NoteEditor = ({ visibility }) => {
   const { sessionId } = useParams();
+  const [, setParams] = useSearchParams();
+  const shared = visibility === "shared";
   const navigate = useNavigate();
   const { notify } = useToast();
 
@@ -68,7 +71,8 @@ const NoteEditor = () => {
   const { can, promptUpgrade } = useEntitlement();
   const canStructured = can("notes.structuredTemplates");
   // New notes start with SOAP when the plan includes it, otherwise free write
-  const [template, setTemplate] = useState(() => (canStructured ? "soap" : "free"));
+  // Shared notes are always free write (rich text); private notes start with SOAP when the plan has it
+  const [template, setTemplate] = useState(() => (shared || !canStructured ? "free" : "soap"));
   const [sections, setSections] = useState(emptySections);
   const [saveState, setSaveState] = useState("idle");
   const [savedAt, setSavedAt] = useState(null);
@@ -87,7 +91,7 @@ const NoteEditor = () => {
 
   useEffect(() => {
     let alive = true;
-    getNoteForSession(sessionId)
+    getNoteForSession(sessionId, visibility)
       .then((res) => {
         if (!alive) return;
         setData(res.data);
@@ -104,7 +108,7 @@ const NoteEditor = () => {
     return () => {
       alive = false;
     };
-  }, [sessionId]);
+  }, [sessionId, visibility]);
 
   const locked = note?.status === "signed";
 
@@ -112,8 +116,9 @@ const NoteEditor = () => {
     const startedAt = editCounter.current;
     setSaveState("saving");
     try {
-      const res = await saveNoteDraft(sessionId, latest.current);
+      const res = await saveNoteDraft(sessionId, { ...latest.current, visibility });
       setNote(res.data.note);
+      setData((d) => (d ? { ...d, notes: { ...d.notes, [visibility]: res.data.note.status } } : d));
       setSavedAt(new Date());
       if (editCounter.current === startedAt) {
         setDirty(false);
@@ -127,7 +132,7 @@ const NoteEditor = () => {
       notify(apiError(err, "Couldn't save your note."), { type: "error" });
       return false;
     }
-  }, [sessionId, notify]);
+  }, [sessionId, visibility, notify]);
 
   // Autosave shortly after typing stops
   useEffect(() => {
@@ -161,6 +166,12 @@ const NoteEditor = () => {
   // Structured templates need the plan feature, unless this note already uses one
   const templateLocked = (key) => key !== "free" && !canStructured && note?.template !== key;
 
+  const switchTo = async (target) => {
+    if (target === visibility) return;
+    if (dirty && !locked && !(await save())) return;
+    setParams(target === "shared" ? { v: "shared" } : {}, { replace: true });
+  };
+
   const markEdited = () => {
     editCounter.current += 1;
     setDirty(true);
@@ -189,8 +200,9 @@ const NoteEditor = () => {
       if (!id) throw new Error("Write something before signing the note");
       const res = await signNote(id);
       setNote(res.data.note);
+      setData((d) => (d ? { ...d, notes: { ...d.notes, [visibility]: "signed" } } : d));
       setConfirmSign(false);
-      notify("Note signed and locked");
+      notify(shared ? `Shared with ${data?.client?.name || "your client"}` : "Note signed and locked");
     } catch (err) {
       notify(apiError(err, err.message), { type: "error" });
     } finally {
@@ -283,7 +295,7 @@ const NoteEditor = () => {
                   disabled={words === 0 || busy}
                   className="text-sm font-semibold px-5 py-2.5 rounded-full bg-[#211A16] text-white hover:bg-[#3A2E27] transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  Sign & lock
+                  {shared ? "Sign & share" : "Sign & lock"}
                 </button>
               </>
             )}
@@ -340,19 +352,48 @@ const NoteEditor = () => {
             )}
 
             <p className="text-[11px] text-[#A89C8F] px-2 leading-relaxed">
-              🔐 Notes are private to you. They're never shared with clients or shown on your public page.
+              {shared
+                ? locked
+                  ? `👁 Shared — ${client?.name || "your client"} can read this note in their client space.`
+                  : "👁 This note is for your client. They'll see it in their client space once you sign & share it."
+                : "🔐 Private notes are only for you. They're never sent to clients or shown on your public page."}
             </p>
           </aside>
 
           {/* Editor */}
           <main className="rounded-3xl bg-white border border-[#EFE6DA] overflow-hidden">
+            <div className="flex border-b border-[#F3EBDF] bg-[#FBF8F3]" role="tablist">
+              {[
+                ["private", "🔒 Private note", "Your clinical record"],
+                ["shared", "👁 Shared with client", "Summary or homework"],
+              ].map(([key, label, hint]) => {
+                const active = key === visibility;
+                const state = data.notes?.[key];
+                return (
+                  <button
+                    key={key}
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => switchTo(key)}
+                    className={`flex-1 text-left px-5 py-3.5 border-b-2 transition ${
+                      active ? "bg-white border-[#D96B00]" : "border-transparent hover:bg-white/60"
+                    }`}
+                  >
+                    <span className={`block text-sm font-semibold ${active ? "text-[#2B221E]" : "text-[#8A7A6D]"}`}>{label}</span>
+                    <span className="block text-[11px] text-[#A89C8F]">
+                      {state === "signed" ? (key === "shared" ? "Shared ✓" : "Signed ✓") : state === "draft" ? "Draft" : hint}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
             {cancelled && !note && (
               <p className="m-6 text-sm text-[#9C3B2E] bg-[#FDECEA] rounded-2xl px-4 py-3">
                 This session was cancelled, so notes can't be added.
               </p>
             )}
 
-            {!locked && !(cancelled && !note) && (
+            {!shared && !locked && !(cancelled && !note) && (
               <div className="flex flex-wrap items-center gap-2 px-6 pt-5 pb-4 border-b border-[#F3EBDF]">
                 {Object.entries(TEMPLATES).map(([key, t]) => (
                   <button
@@ -379,7 +420,8 @@ const NoteEditor = () => {
               <div className="divide-y divide-[#F6F0E8]">
                 {TEMPLATES[template].sections.map((key) => {
                   const s = SECTIONS[key];
-                  if (locked && !sections[key]?.trim()) return null;
+                  if (locked && !sections[key]?.replace(/<[^>]+>/g, "").trim()) return null;
+                  const title = key === "body" && shared ? `Note for ${client?.name || "your client"}` : s.title;
                   return (
                     <section key={key} className="px-6 py-5 flex gap-4 group">
                       <span
@@ -390,10 +432,25 @@ const NoteEditor = () => {
                         {s.letter}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-semibold text-[#2B221E]">{s.title}</h3>
-                        {!locked && <p className="text-xs text-[#A89C8F] mb-2">{s.hint}</p>}
+                        <h3 className="text-sm font-semibold text-[#2B221E]">{title}</h3>
+                        {!locked && (
+                          <p className="text-xs text-[#A89C8F] mb-2">
+                            {key === "body" && shared ? "A summary, exercises or homework, written to your client." : s.hint}
+                          </p>
+                        )}
                         {locked ? (
-                          <p className="text-[15px] leading-7 text-[#2B221E] whitespace-pre-line mt-1">{sections[key]}</p>
+                          key === "body" ? (
+                            <RichTextView html={sections[key]} className="mt-1" />
+                          ) : (
+                            <p className="text-[15px] leading-7 text-[#2B221E] whitespace-pre-line mt-1">{sections[key]}</p>
+                          )
+                        ) : key === "body" ? (
+                          <RichTextEditor
+                            value={sections[key]}
+                            onChange={(v) => updateSection(key, v)}
+                            placeholder={shared ? "Hi … Here's a summary of what we covered today…" : s.placeholder}
+                            minHeight={shared ? 260 : 300}
+                          />
                         ) : (
                           <AutoTextarea
                             value={sections[key]}
@@ -462,8 +519,8 @@ const NoteEditor = () => {
         <Modal
           open
           onClose={() => setConfirmSign(false)}
-          title="Sign and lock this note?"
-          subtitle="Signed notes become part of the clinical record."
+          title={shared ? `Sign and share with ${client?.name || "your client"}?` : "Sign and lock this note?"}
+          subtitle={shared ? "Your client will be able to read this note." : "Signed notes become part of the clinical record."}
           footer={
             <>
               <button
@@ -477,12 +534,18 @@ const NoteEditor = () => {
                 disabled={busy}
                 className="px-5 py-2.5 rounded-full text-sm font-semibold bg-[#211A16] text-white hover:bg-[#3A2E27] transition disabled:opacity-50"
               >
-                {busy ? "Signing…" : "Sign & lock"}
+                {busy ? "Signing…" : shared ? "Sign & share" : "Sign & lock"}
               </button>
             </>
           }
         >
           <ul className="space-y-2 text-sm text-[#4A413A]">
+            {shared && (
+              <li className="flex gap-2">
+                <span className="text-[#4F7161]">✓</span> It appears in {client?.name || "your client"}'s client space, and
+                they get an email saying a note is waiting (the email doesn't include the note).
+              </li>
+            )}
             <li className="flex gap-2">
               <span className="text-[#4F7161]">✓</span> The note can no longer be edited or deleted.
             </li>
@@ -529,4 +592,10 @@ const NoteEditor = () => {
   );
 };
 
-export default NoteEditor;
+const NoteEditorPage = () => {
+  const [params] = useSearchParams();
+  const visibility = params.get("v") === "shared" ? "shared" : "private";
+  return <NoteEditor key={visibility} visibility={visibility} />;
+};
+
+export default NoteEditorPage;

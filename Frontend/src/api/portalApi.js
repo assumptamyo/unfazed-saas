@@ -39,3 +39,6 @@ export const requestLoginCode = (email) =>
 export const verifyLoginCode = (email, code) =>
   axios.post(`${import.meta.env.VITE_API_BASE_URL}/portal/login/verify`, { email, code });
 export const saveClientToken = (token) => localStorage.setItem(CLIENT_TOKEN_KEY, token);
+
+// Notes the therapist has shared (private notes never reach this endpoint)
+export const getPortalNotes = () => portalAxios.get("/portal/notes");

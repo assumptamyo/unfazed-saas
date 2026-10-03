@@ -43,6 +43,11 @@ const sessionSchema = new mongoose.Schema(
       url: { type: String },
       expiresAt: { type: Date },
     },
+    // Set by the notification scheduler so each scheduled message goes out once
+    scheduledNotifications: {
+      reminderSentAt: { type: Date },
+      followUpSentAt: { type: Date },
+    },
     sessionType: {
       type: String,
       default: "individual",

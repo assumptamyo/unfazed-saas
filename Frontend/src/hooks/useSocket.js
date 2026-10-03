@@ -38,3 +38,8 @@ export const disconnectSocket = (token) => {
   sockets.get(token)?.disconnect();
   sockets.delete(token);
 };
+
+// Send a lightweight signal (e.g. "typing") on the shared connection
+export const emitSocket = (token, event, payload) => {
+  if (token) getSocket(token).emit(event, payload);
+};

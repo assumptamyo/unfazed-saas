@@ -6,19 +6,11 @@ import Therapist from "../models/Therapist.js";
 import { nextSequence } from "../models/Counter.js";
 import { findAvailableSlot } from "./slotService.js";
 import { createOrder, fetchPayment, refundPayment, publicKeyId } from "./razorpayService.js";
-import { generateReceiptPdf } from "./receiptService.js";
-import {
-  sendBookingConfirmationToClient,
-  sendNewBookingNotificationToTherapist,
-  sendSlotTakenRefundToClient,
-} from "./emailService.js";
 import { toDateKey } from "../utils/dateUtils.js";
-import { createPortalLink } from "./portalService.js";
+import { publishInBackground, EVENTS } from "./notificationService.js";
 
 export const HOLD_MINUTES = 15;
 
-const receiptUrl = (token) =>
-  `${process.env.API_PUBLIC_URL || `http://localhost:${process.env.PORT || 5000}`}/api/receipts/${token}`;
 
 // Find the client by email for this therapist, or create them from the booking form
 export const upsertClientForBooking = async (therapistId, b) => {
@@ -30,6 +22,7 @@ export const upsertClientForBooking = async (therapistId, b) => {
       name: b.clientName,
       email: b.clientEmail,
       phone: b.clientPhone || "",
+      whatsappOptIn: b.whatsappOptIn !== false,
       intake: {
         demographics: {
           age: b.age || undefined,
@@ -43,6 +36,9 @@ export const upsertClientForBooking = async (therapistId, b) => {
   }
 
   if (!client.consent?.agreed) client.consent = { agreed: true, agreedAt: new Date() };
+  // Keep contact details current with what the client entered this time
+  if (b.clientPhone) client.phone = b.clientPhone;
+  if (b.whatsappOptIn !== undefined) client.whatsappOptIn = b.whatsappOptIn !== false;
   client.archivedAt = null; // booking again brings an archived client back
   await client.save();
   return client;
@@ -159,36 +155,13 @@ export const finalizePaidBooking = async (razorpayOrderId, razorpayPaymentId) =>
     });
     await payment.save();
 
-    try {
-      const pdf = await generateReceiptPdf({ payment, therapistName: therapist.name });
-      await sendBookingConfirmationToClient(
-        client.email,
-        client.name,
-        therapist.name,
-        dateKey,
-        session.startTime,
-        session.endTime,
-        {
-          amount: payment.amount,
-          receiptNumber: payment.receiptNumber,
-          receiptUrl: receiptUrl(payment.receiptToken),
-          pdf,
-        },
-        await createPortalLink(client)
-      );
-      await sendNewBookingNotificationToTherapist(
-        therapist.email,
-        therapist.name,
-        client.name,
-        client.email,
-        dateKey,
-        session.startTime,
-        session.endTime,
-        payment.amount
-      );
-    } catch (emailError) {
-      console.error("Paid booking email failed:", emailError.message);
-    }
+    // Confirmation with the PDF receipt, therapist email, WhatsApp, bell: all via the NotificationService
+    publishInBackground(EVENTS.BOOKING_CONFIRMED, {
+      therapistId: therapist._id,
+      clientId: client._id,
+      sessionId: session._id,
+      paymentId: payment._id,
+    });
 
     return { payment, session };
   } catch (error) {
@@ -196,7 +169,15 @@ export const finalizePaidBooking = async (razorpayOrderId, razorpayPaymentId) =>
       // Someone else got the slot: give the money back automatically
       try {
         await refundWholePayment(payment, "Slot was taken before the booking could be confirmed");
-        await sendSlotTakenRefundToClient(b.clientEmail, b.clientName, therapist.name, dateKey, b.startTime, payment.amount);
+        publishInBackground(EVENTS.PAYMENT_REFUNDED, {
+          therapistId: therapist._id,
+          reason: "slot_taken",
+          amount: payment.amount,
+          clientEmail: b.clientEmail,
+          clientName: b.clientName,
+          date: dateKey,
+          startTime: b.startTime,
+        });
       } catch (refundError) {
         console.error("Automatic refund failed:", refundError.message);
         payment.status = "failed";

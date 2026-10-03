@@ -24,6 +24,7 @@ import PortalRoom from "../pages/portal/PortalRoom";
 import PortalLogin from "../pages/portal/PortalLogin";
 import Plans from "../pages/therapist/Plans";
 import Analytics from "../pages/therapist/Analytics";
+import NotificationLog from "../pages/therapist/NotificationLog";
 
 const AppRoutes = () => {
   return (
@@ -101,6 +102,14 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <Plans />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/therapist/notifications"
+        element={
+          <ProtectedRoute>
+            <NotificationLog />
           </ProtectedRoute>
         }
       />

@@ -1,8 +1,8 @@
 import Availability from "../models/Availability.js";
 import AvailabilityOverride from "../models/AvailabilityOverride.js";
 import Session from "../models/Session.js";
-import { sendCancellationToClient } from "../services/emailService.js";
 import { refundSessionPayment } from "../services/paymentService.js";
+import { publish, publishInBackground, EVENTS } from "../services/notificationService.js";
 import {
   dateFromKey,
   toDateKey,
@@ -245,23 +245,15 @@ export const createOverride = async (req, res) => {
         console.error("Time-off refund failed:", refundError.message);
       }
 
-      if (notifyClients && session.client?.email) {
-        try {
-          await sendCancellationToClient(
-            session.client.email,
-            session.client.name,
-            req.therapist.name,
-            session.date,
-            session.startTime,
-            session.endTime,
-            parsed.reason,
-            refundedAmount
-          );
-          emailsSent += 1;
-        } catch (emailError) {
-          console.error("Override cancellation email failed:", emailError.message);
-        }
-      }
+      const sent = await publish(EVENTS.SESSION_CANCELLED, {
+        therapistId: req.therapist._id,
+        clientId: session.client?._id,
+        sessionId: session._id,
+        reason: parsed.reason,
+        refundAmount: refundedAmount,
+        notifyClient: notifyClients,
+      });
+      if (sent.email?.client === "sent") emailsSent += 1;
     }
 
     const overrides = await AvailabilityOverride.find({

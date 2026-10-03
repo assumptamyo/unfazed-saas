@@ -79,6 +79,8 @@ const ThreadPanel = ({ clientId, token, onBack }) => {
         me="therapist"
         otherName={client?.name || "client"}
         onSend={convo.sendText}
+        otherTyping={convo.otherTyping}
+        onTyping={convo.notifyTyping}
         disabledReason={client?.archived ? "This client is archived. Restore them to send messages." : ""}
         emptyHint={client ? `No messages yet. ${client.name} will be emailed when you write.` : ""}
       />

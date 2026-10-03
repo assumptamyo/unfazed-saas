@@ -11,7 +11,9 @@ import {
   sendPortalMessage,
   markPortalRead,
   leavePortal,
+  getPortalNotes,
 } from "../../api/portalApi";
+import { RichTextView } from "../../components/notes/RichTextEditor";
 
 const useNow = () => {
   const [now, setNow] = useState(() => new Date());
@@ -76,8 +78,60 @@ const Messages = ({ portal }) => {
           me="client"
           otherName={first}
           onSend={conversation.sendText}
+        otherTyping={conversation.otherTyping}
+        onTyping={conversation.notifyTyping}
           emptyHint={`Send ${first} a message about scheduling or anything between sessions.`}
         />
+      </div>
+    </section>
+  );
+};
+
+// Notes the therapist chose to share. The server only ever sends shared, signed notes here.
+const SharedNotes = ({ therapistName }) => {
+  const [notes, setNotes] = useState(null);
+  const [open, setOpen] = useState(null);
+
+  useEffect(() => {
+    getPortalNotes()
+      .then((res) => {
+        setNotes(res.data.notes);
+        setOpen(res.data.notes[0]?.id ?? null);
+      })
+      .catch(() => setNotes([]));
+  }, []);
+
+  if (!notes || notes.length === 0) return null;
+
+  return (
+    <section>
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-[#A89C8F] mb-3">Notes from {therapistName}</h2>
+      <div className="space-y-2">
+        {notes.map((n) => {
+          const expanded = open === n.id;
+          return (
+            <div key={n.id} className="bg-white border border-[#EFE6DA] rounded-2xl overflow-hidden">
+              <button
+                onClick={() => setOpen(expanded ? null : n.id)}
+                aria-expanded={expanded}
+                className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-[#FBF8F3] transition"
+              >
+                <span>
+                  <span className="block text-sm font-medium text-[#2B221E]">
+                    {n.session ? `Session on ${format(parseISO(n.session.date), "EEE, MMM d")}` : "Note"}
+                  </span>
+                  <span className="block text-xs text-[#A89C8F]">Shared {format(parseISO(n.sharedAt), "MMM d, yyyy")}</span>
+                </span>
+                <span className={`text-[#D96B00] transition-transform ${expanded ? "rotate-180" : ""}`}>⌄</span>
+              </button>
+              {expanded && (
+                <div className="px-5 pb-5 pt-1 border-t border-[#F6F0E8] animate-fade-in">
+                  <RichTextView html={n.html} />
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -242,6 +296,7 @@ const PortalHome = () => {
               </div>
             </section>
           )}
+          <SharedNotes therapistName={therapist?.name || "your therapist"} />
         </div>
 
         <Messages portal={portal} />

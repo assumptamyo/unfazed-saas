@@ -19,6 +19,7 @@ import {
   markClientRead,
   requestLoginCode,
   verifyLoginCode,
+  getClientNotes,
 } from "../controllers/portalController.js";
 
 const textRule = body("text").isString().trim().isLength({ min: 1, max: 4000 }).withMessage("Message must be 1-4000 characters");
@@ -61,3 +62,4 @@ portalRouter.post("/sessions/:id/video", [param("id").isMongoId()], validateRequ
 portalRouter.get("/messages", [beforeRule], validateRequest, getClientMessages);
 portalRouter.post("/messages", [textRule, sessionRule], validateRequest, sendClientMessage);
 portalRouter.post("/messages/read", markClientRead);
+portalRouter.get("/notes", getClientNotes);
