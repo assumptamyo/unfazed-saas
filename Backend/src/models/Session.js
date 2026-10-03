@@ -43,6 +43,15 @@ const sessionSchema = new mongoose.Schema(
       url: { type: String },
       expiresAt: { type: Date },
     },
+    // Booked with a session credit from a package (instead of a separate payment)
+    clientPackage: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ClientPackage",
+    },
+    packageCreditReturned: {
+      type: Boolean,
+      default: false,
+    },
     // Set by the notification scheduler so each scheduled message goes out once
     scheduledNotifications: {
       reminderSentAt: { type: Date },

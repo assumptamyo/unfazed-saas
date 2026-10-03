@@ -1,8 +1,12 @@
 import Payment from "../models/Payment.js";
 import Therapist from "../models/Therapist.js";
 import { paymentsEnabled, isTestMode } from "../services/razorpayService.js";
-import { expireStaleHolds, refundSessionPayment } from "../services/paymentService.js";
-import { generateReceiptPdf } from "../services/receiptService.js";
+import { expireStaleHolds, refundSessionPayment, refundPackagePayment } from "../services/paymentService.js";
+import Package, { PACKAGE_SIZES } from "../models/Package.js";
+import { DEFAULT_VALIDITY_DAYS, serializePackage, serializeClientPackage } from "../services/packageService.js";
+import { getTierForTherapist } from "../services/entitlementService.js";
+import { platformFeePercentFor } from "../config/platformFees.js";
+import { invoicePdfForPayment, invoiceFileName } from "../services/invoiceService.js";
 import { sendPdf } from "./paymentController.js";
 import { toDateKey } from "../utils/dateUtils.js";
 import { canAccess, upgradeRequired } from "../services/entitlementService.js";
@@ -19,7 +23,12 @@ const monthKey = (date) => {
 const serializePayment = (p) => ({
   id: p._id,
   status: p.status,
+  kind: p.kind || "session",
+  packageSessions: p.kind === "package" ? p.packagePurchase?.sessionCount || null : null,
+  clientPackage: p.clientPackage?.sessionsTotal ? serializeClientPackage(p.clientPackage) : null,
   amount: p.amount,
+  platformFee: p.platformFee || 0,
+  netAmount: p.netAmount ?? p.amount - (p.platformFee || 0),
   method: p.method,
   paidAt: p.paidAt || null,
   createdAt: p.createdAt,
@@ -41,7 +50,7 @@ export const getBillingSummary = async (req, res) => {
   try {
     const therapistId = req.therapist._id;
     const settled = await Payment.find({ therapist: therapistId, status: { $in: ["paid", "refunded"] } }).select(
-      "amount status paidAt refund"
+      "amount status paidAt refund platformFee"
     );
 
     const now = new Date();
@@ -54,7 +63,7 @@ export const getBillingSummary = async (req, res) => {
     }
     const byMonth = Object.fromEntries(months.map((m) => [m.month, m]));
 
-    const stats = { thisMonth: 0, lastMonth: 0, totalCollected: 0, totalRefunded: 0, paidCount: 0 };
+    const stats = { thisMonth: 0, lastMonth: 0, totalCollected: 0, totalRefunded: 0, paidCount: 0, platformFees: 0, netEarnings: 0 };
     settled.forEach((p) => {
       const key = monthKey(p.paidAt);
       stats.totalCollected += p.amount;
@@ -66,14 +75,21 @@ export const getBillingSummary = async (req, res) => {
         byMonth[monthKey(p.refund?.createdAt || p.paidAt)].refunded += refunded;
       }
       const net = p.amount - refunded;
+      // The platform fee shrinks in proportion to what was refunded
+      const fee = Math.round((p.platformFee || 0) * (net / p.amount));
+      stats.platformFees += fee;
+      stats.netEarnings += net - fee;
       if (key === thisMonth) stats.thisMonth += net;
       if (key === lastMonth) stats.lastMonth += net;
     });
 
+    const tier = await getTierForTherapist(req.therapist);
     return res.status(200).json({
       paymentsEnabled: paymentsEnabled(),
       testMode: isTestMode(),
       sessionFee: req.therapist.sessionFee || 0,
+      platformFeePercent: platformFeePercentFor(tier.key),
+      invoice: { gstin: req.therapist.gstin || "", gstRate: req.therapist.gstRate || 0 },
       stats,
       monthly: months,
     });
@@ -125,6 +141,7 @@ export const getPayments = async (req, res) => {
     const payments = await Payment.find(query)
       .populate("client", "name")
       .populate("session", "status")
+      .populate("clientPackage")
       .sort({ createdAt: -1 })
       .limit(500);
 
@@ -146,8 +163,8 @@ export const downloadReceipt = async (req, res) => {
   if (!payment) {
     return res.status(404).json({ message: "Receipt not found" });
   }
-  const pdf = await generateReceiptPdf({ payment, therapistName: req.therapist.name });
-  return sendPdf(res, pdf, `Receipt-${payment.receiptNumber}.pdf`, false);
+  const pdf = await invoicePdfForPayment(payment);
+  return sendPdf(res, pdf, invoiceFileName(payment), false);
 };
 
 // @desc   Refund a payment. If its session is still upcoming, the session is cancelled too.
@@ -161,6 +178,12 @@ export const refundPaymentById = async (req, res) => {
     }
     if (payment.status !== "paid") {
       return res.status(400).json({ message: "Only completed payments can be refunded" });
+    }
+
+    // A package: refund the sessions that haven't been used; booked sessions stay booked
+    if (payment.kind === "package") {
+      const amount = await refundPackagePayment(payment, reason || "Unused package sessions refunded");
+      return res.status(200).json({ message: "Refund issued", cancelledSession: false, amount });
     }
 
     await refundSessionPayment(payment.session, reason || "Refunded by therapist");
@@ -190,4 +213,71 @@ export const refundPaymentById = async (req, res) => {
       message: error.error?.description || "Refund failed. Please try again or refund from the Razorpay dashboard.",
     });
   }
+};
+
+// @desc   The therapist's package offers: one row per size (3/6/12), created on first save
+// @route  GET /api/billing/packages
+export const getPackages = async (req, res) => {
+  const saved = await Package.find({ therapist: req.therapist._id });
+  const bySize = Object.fromEntries(saved.map((p) => [p.sessionCount, p]));
+  const packages = PACKAGE_SIZES.map((size) =>
+    bySize[size]
+      ? serializePackage(bySize[size])
+      : {
+          id: null,
+          sessionCount: size,
+          pricePerSession: req.therapist.sessionFee || 0,
+          totalPrice: size * (req.therapist.sessionFee || 0),
+          validityDays: DEFAULT_VALIDITY_DAYS[size],
+          active: false,
+        }
+  );
+  return res.status(200).json({ packages, sessionFee: req.therapist.sessionFee || 0 });
+};
+
+// @desc   Turn a package on/off or change its price and validity
+// @route  PUT /api/billing/packages/:size   body: { active, pricePerSession (rupees), validityDays }
+export const savePackage = async (req, res) => {
+  try {
+    const size = Number(req.params.size);
+    const { active, validityDays } = req.body;
+    const pricePerSession = Math.round(Number(req.body.pricePerSession) * 100);
+
+    if (active) {
+      const access = await canAccess(req.therapist, "payments.online");
+      if (!access.allowed) return upgradeRequired(res, access);
+      if (!req.therapist.sessionFee) {
+        return res.status(400).json({ message: "Set a session fee first — packages are offered alongside paid sessions" });
+      }
+      if (pricePerSession > req.therapist.sessionFee) {
+        return res.status(400).json({ message: "A package price per session can't be higher than your single-session fee" });
+      }
+    }
+
+    const pkg = await Package.findOneAndUpdate(
+      { therapist: req.therapist._id, sessionCount: size },
+      { $set: { active: Boolean(active), pricePerSession, validityDays } },
+      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
+    );
+    return res.status(200).json({ message: active ? "Package is live" : "Package turned off", package: serializePackage(pkg) });
+  } catch (error) {
+    console.error("Save package error:", error.message);
+    return res.status(500).json({ message: "Server error while saving the package" });
+  }
+};
+
+// @desc   GST details printed on invoices
+// @route  PUT /api/billing/invoice-settings   body: { gstin, gstRate }
+export const updateInvoiceSettings = async (req, res) => {
+  const gstin = String(req.body.gstin || "").trim().toUpperCase();
+  const gstRate = Number(req.body.gstRate) || 0;
+  if (gstRate > 0 && !gstin) {
+    return res.status(400).json({ message: "Add your GSTIN to charge GST" });
+  }
+  const therapist = await Therapist.findByIdAndUpdate(
+    req.therapist._id,
+    { gstin, gstRate },
+    { new: true, runValidators: true }
+  ).select("gstin gstRate");
+  return res.status(200).json({ message: "Invoice details saved", invoice: { gstin: therapist.gstin, gstRate: therapist.gstRate } });
 };

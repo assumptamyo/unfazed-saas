@@ -19,6 +19,8 @@ import { canAccess } from "../services/entitlementService.js";
 import { publish, publishInBackground, EVENTS } from "../services/notificationService.js";
 import { sendVerificationCodeEmail } from "../services/emailService.js";
 import { normalizeIndianMobile } from "../utils/phone.js";
+import Package from "../models/Package.js";
+import { redeemCredit, returnCredit, serializeClientPackage } from "../services/packageService.js";
 
 const slotTakenResponse = (res) =>
   res.status(409).json({ message: "That time is no longer available. Please choose another slot." });
@@ -51,35 +53,55 @@ const rememberedClient = async (clientToken, therapist, email) => {
   }
 };
 
-// Create the booking once the client's email is confirmed. Free sessions are
-// confirmed now; paid sessions return a Razorpay checkout.
-const completeBooking = async (therapist, booking, res) => {
+// Create the booking once the client's email is confirmed:
+//   - a client with an unused package session books with that credit (no payment)
+//   - otherwise paid sessions (or a package, if one was chosen) return a Razorpay checkout
+//   - free sessions are confirmed straight away
+const completeBooking = async (therapist, booking, res, { packageId } = {}) => {
   const client = await upsertClientForBooking(therapist._id, booking);
   const clientToken = issueClientToken(client);
   const dateKey = toDateKey(booking.date);
 
-  // Only charge when the therapist's plan includes online payments
-  const charges = therapist.sessionFee > 0 && (await canAccess(therapist, "payments.online")).allowed;
+  const credit = await redeemCredit(therapist._id, client._id, dateKey);
 
-  if (charges) {
-    if (!paymentsEnabled()) {
-      return res.status(503).json({
-        message: "Online payment isn't available right now. Please contact your therapist directly.",
-      });
+  if (!credit) {
+    // Only charge when the therapist's plan includes online payments
+    const charges = therapist.sessionFee > 0 && (await canAccess(therapist, "payments.online")).allowed;
+
+    if (charges) {
+      if (!paymentsEnabled()) {
+        return res.status(503).json({
+          message: "Online payment isn't available right now. Please contact your therapist directly.",
+        });
+      }
+      let pkg = null;
+      if (packageId) {
+        pkg = await Package.findOne({ _id: packageId, therapist: therapist._id, active: true });
+        if (!pkg) {
+          return res.status(400).json({ message: "That package is no longer offered. Please choose again." });
+        }
+      }
+      const checkout = await startCheckout(therapist, booking, pkg);
+      if (!checkout) return slotTakenResponse(res);
+      return res.status(200).json({ requiresPayment: true, checkout, clientToken });
     }
-    const checkout = await startCheckout(therapist, booking);
-    if (!checkout) return slotTakenResponse(res);
-    return res.status(200).json({ requiresPayment: true, checkout, clientToken });
   }
 
-  const session = await Session.create({
-    therapist: therapist._id,
-    client: client._id,
-    date: booking.date,
-    startTime: booking.startTime,
-    endTime: booking.endTime,
-    notes: booking.notes,
-  });
+  let session;
+  try {
+    session = await Session.create({
+      therapist: therapist._id,
+      client: client._id,
+      date: booking.date,
+      startTime: booking.startTime,
+      endTime: booking.endTime,
+      notes: booking.notes,
+      clientPackage: credit?._id,
+    });
+  } catch (error) {
+    if (credit) await returnCredit(credit._id);
+    throw error;
+  }
 
   // Notifications (emails, WhatsApp, the therapist's bell) are handled by the NotificationService
   publishInBackground(EVENTS.BOOKING_CONFIRMED, {
@@ -92,6 +114,7 @@ const completeBooking = async (therapist, booking, res) => {
     message: "Session booked successfully",
     requiresPayment: false,
     clientToken,
+    usedPackage: credit ? serializeClientPackage(credit) : null,
     session: {
       id: session._id,
       date: dateKey,
@@ -155,14 +178,16 @@ export const startBooking = async (req, res) => {
       }
     }
 
+    const packageId = b.packageId || undefined;
     if (await rememberedClient(b.clientToken, therapist, booking.clientEmail)) {
-      return completeBooking(therapist, booking, res);
+      return completeBooking(therapist, booking, res, { packageId });
     }
 
     const code = generateCode();
     const request = await BookingRequest.create({
       therapist: therapist._id,
       booking,
+      packageId,
       codeHash: hashCode(code),
       expiresAt: new Date(Date.now() + CODE_TTL_MINUTES * 60000),
     });
@@ -220,7 +245,7 @@ export const verifyBooking = async (req, res) => {
     const slot = await findAvailableSlot(therapist._id, toDateKey(claimed.booking.date), claimed.booking.startTime);
     if (!slot) return slotTakenResponse(res);
 
-    return completeBooking(therapist, claimed.booking.toObject(), res);
+    return completeBooking(therapist, claimed.booking.toObject(), res, { packageId: claimed.packageId });
   } catch (error) {
     return handleError(error, res, "Verify booking error");
   }

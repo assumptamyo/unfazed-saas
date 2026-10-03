@@ -1,8 +1,9 @@
 import mongoose from "mongoose";
 
-// One online payment for one booking. While status is "created" the payment also
-// holds the slot (until holdExpiresAt) so nobody else can book it during checkout.
-// The client and session are only created once the payment succeeds.
+// One online payment: either a single session, or a package bought together with
+// its first session. While status is "created" the payment also holds the slot
+// (until holdExpiresAt) so nobody else can book it during checkout. The client,
+// session (and package) are only created once the payment succeeds.
 const paymentSchema = new mongoose.Schema(
   {
     therapist: {
@@ -18,10 +19,39 @@ const paymentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Session",
     },
+    kind: {
+      type: String,
+      enum: ["session", "package"],
+      default: "session",
+    },
+    // For kind "package": what is being bought, copied from the therapist's offer
+    packagePurchase: {
+      package: { type: mongoose.Schema.Types.ObjectId, ref: "Package" },
+      sessionCount: { type: Number },
+      pricePerSession: { type: Number },
+      validityDays: { type: Number },
+    },
+    clientPackage: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ClientPackage",
+    },
     amount: {
-      type: Number, // in paise (₹1 = 100)
+      type: Number, // in paise (₹1 = 100), what the client pays
       required: true,
       min: 100,
+    },
+    // Unfazed's commission and what the therapist receives (amount - platformFee)
+    platformFee: {
+      type: Number,
+      default: 0,
+    },
+    netAmount: {
+      type: Number,
+    },
+    // Invoice tax details, fixed at the time of payment
+    tax: {
+      gstin: { type: String, default: "" },
+      rate: { type: Number, default: 0 },
     },
     currency: {
       type: String,
@@ -57,8 +87,10 @@ const paymentSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
+    // The gateway transaction id
     razorpayPaymentId: {
       type: String,
+      alias: "gatewayTransactionId",
     },
     method: {
       type: String, // upi, card, netbanking, wallet…
@@ -67,6 +99,7 @@ const paymentSchema = new mongoose.Schema(
     paidAt: {
       type: Date,
     },
+    // Invoice number, e.g. UNF-2026-00012
     receiptNumber: {
       type: String,
     },

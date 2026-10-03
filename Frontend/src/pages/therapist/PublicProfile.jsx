@@ -147,7 +147,7 @@ const PublicProfile = () => {
                 {therapist.name} isn't taking online bookings yet. Please check back soon.
               </div>
             ) : (
-              <BookingCalendar slug={slug} fee={therapist.sessionFee || 0} therapistName={therapist.name} />
+              <BookingCalendar slug={slug} fee={therapist.sessionFee || 0} therapistName={therapist.name} packages={therapist.packages || []} />
             )}
           </div>
 

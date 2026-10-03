@@ -1,3 +1,4 @@
+import Payment from "../models/Payment.js";
 import Client from "../models/Client.js";
 import Session from "../models/Session.js";
 import SessionNote from "../models/SessionNote.js";
@@ -9,6 +10,7 @@ import { canAccess, upgradeRequired } from "../services/entitlementService.js";
 import { publish, publishInBackground, EVENTS } from "../services/notificationService.js";
 import { refundSessionPayment } from "../services/paymentService.js";
 import { normalizeIndianMobile } from "../utils/phone.js";
+import { findClientPackages, serializeClientPackage } from "../services/packageService.js";
 
 // @desc   Get all clients for the logged-in therapist (with search/filter)
 // @route  GET /api/clients
@@ -106,10 +108,13 @@ export const getClientById = async (req, res) => {
       return res.status(404).json({ message: "Client not found" });
     }
 
-    const sessions = await Session.find({
-      client: client._id,
-      therapist: req.therapist._id,
-    }).sort({ date: -1 });
+    const [sessions, clientPackages, payments] = await Promise.all([
+      Session.find({ client: client._id, therapist: req.therapist._id }).sort({ date: -1 }),
+      findClientPackages(req.therapist._id, client._id),
+      Payment.find({ client: client._id, therapist: req.therapist._id, status: { $in: ["paid", "refunded"] } })
+        .sort({ paidAt: -1 })
+        .limit(50),
+    ]);
 
     const today = dateFromKey(todayKey());
     const hasUpcoming = sessions.some(
@@ -122,6 +127,17 @@ export const getClientById = async (req, res) => {
         status: hasUpcoming ? "active" : "inactive",
       },
       sessions,
+      packages: clientPackages.map(serializeClientPackage),
+      payments: payments.map((p) => ({
+        id: p._id,
+        kind: p.kind || "session",
+        packageSessions: p.packagePurchase?.sessionCount || null,
+        amount: p.amount,
+        status: p.status,
+        paidAt: p.paidAt,
+        receiptNumber: p.receiptNumber,
+        refundAmount: p.refund?.amount || 0,
+      })),
     });
   } catch (error) {
     console.error("Get client detail error:", error.message);

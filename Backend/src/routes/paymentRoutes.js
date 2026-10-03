@@ -15,6 +15,9 @@ import {
   getPayments,
   downloadReceipt,
   refundPaymentById,
+  getPackages,
+  savePackage,
+  updateInvoiceSettings,
 } from "../controllers/billingController.js";
 
 // ----- Public: used by the client's booking page and by Razorpay -----
@@ -71,4 +74,33 @@ billingRouter.post(
   [idParam, body("reason").optional().isString().isLength({ max: 500 })],
   validateRequest,
   refundPaymentById
+);
+
+billingRouter.get("/packages", getPackages);
+
+billingRouter.put(
+  "/packages/:size",
+  [
+    param("size").isIn(["3", "6", "12"]).withMessage("Packages come in 3, 6 or 12 sessions"),
+    body("active").isBoolean({ strict: true }),
+    body("pricePerSession").isFloat({ min: 1, max: 100000 }).withMessage("Enter a price per session between ₹1 and ₹1,00,000"),
+    body("validityDays").isInt({ min: 7, max: 730 }).withMessage("Validity must be 7-730 days").toInt(),
+  ],
+  validateRequest,
+  savePackage
+);
+
+billingRouter.put(
+  "/invoice-settings",
+  [
+    body("gstin")
+      .optional({ values: "falsy" })
+      .trim()
+      .toUpperCase()
+      .matches(/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/)
+      .withMessage("Enter a valid 15-character GSTIN"),
+    body("gstRate").isIn([0, 18, "0", "18"]).withMessage("GST rate must be 0% or 18%"),
+  ],
+  validateRequest,
+  updateInvoiceSettings
 );

@@ -4,6 +4,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import DashboardLayout from "../../components/dashboard/DashboardLayout";
 import ClientAvatar from "../../components/appointments/ClientAvatar";
 import Modal from "../../components/appointments/Modal";
+import PackagesCard from "../../components/billing/PackagesCard";
+import InvoiceSettingsCard from "../../components/billing/InvoiceSettingsCard";
 import {
   getBillingSummary,
   updateSessionFee,
@@ -160,7 +162,10 @@ const RefundModal = ({ payment, onClose, onDone }) => {
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const upcoming = payment.sessionStatus === "confirmed";
+  const isPackage = payment.kind === "package";
+  const upcoming = !isPackage && payment.sessionStatus === "confirmed";
+  const cp = payment.clientPackage;
+  const refundable = isPackage ? (cp?.state === "active" ? cp.remaining * cp.pricePerSession : 0) : payment.amount;
 
   const submit = async () => {
     setSaving(true);
@@ -178,7 +183,7 @@ const RefundModal = ({ payment, onClose, onDone }) => {
     <Modal
       open
       onClose={onClose}
-      title={`Refund ${formatRupees(payment.amount)}?`}
+      title={isPackage ? `Refund ${formatRupees(refundable)} for unused sessions?` : `Refund ${formatRupees(payment.amount)}?`}
       subtitle={`To ${payment.client.name} · original payment method`}
       footer={
         <>
@@ -187,14 +192,20 @@ const RefundModal = ({ payment, onClose, onDone }) => {
           </button>
           <button
             onClick={submit}
-            disabled={saving}
+            disabled={saving || refundable < 100}
             className="px-5 py-2.5 rounded-full text-sm font-semibold bg-[#C8553D] text-white hover:bg-[#A9432E] transition disabled:opacity-50"
           >
-            {saving ? "Refunding…" : "Issue full refund"}
+            {saving ? "Refunding…" : isPackage ? `Refund ${formatRupees(refundable)}` : "Issue full refund"}
           </button>
         </>
       }
     >
+      {isPackage && cp && (
+        <p className="text-sm rounded-2xl bg-[#F7FAF8] border border-[#D7E5DC] text-[#3F5A4D] px-4 py-3 mb-4">
+          {cp.remaining} of {cp.sessionsTotal} sessions are unused ({formatRupees(cp.pricePerSession)} each). The package
+          will be closed; sessions already booked with it stay booked.
+        </p>
+      )}
       {upcoming && (
         <p className="text-sm rounded-2xl bg-[#FFF8E6] border border-[#F6DFA8] text-[#7A5414] px-4 py-3 mb-4">
           The session on {formatShortDate(payment.date)} hasn't happened yet, so it will also be cancelled and the client
@@ -259,7 +270,7 @@ const Billing = () => {
     try {
       await downloadReceipt(p.id, p.receiptNumber);
     } catch {
-      notify("Couldn't download the receipt.", { type: "error" });
+      notify("Couldn't download the invoice.", { type: "error" });
     }
   };
 
@@ -293,10 +304,15 @@ const Billing = () => {
                 onSaved={() => setReloadKey((k) => k + 1)}
               />
               <div className="grid grid-cols-2 gap-4">
-                <Tile label="This month" value={formatRupees(s.thisMonth)} hint="net of refunds" accent="#D96B00" />
-                <Tile label="Last month" value={formatRupees(s.lastMonth)} hint="net of refunds" accent="#FF9E4C" />
-                <Tile label="Total collected" value={formatRupees(s.totalCollected)} hint={`${s.paidCount} payments`} accent="#4F7161" />
-                <Tile label="Refunded" value={formatRupees(s.totalRefunded)} hint="all time" accent="#8A5C77" />
+                <Tile label="This month" value={formatRupees(s.thisMonth)} hint={`last month ${formatRupees(s.lastMonth)}`} accent="#D96B00" />
+                <Tile
+                  label="Total collected"
+                  value={formatRupees(s.totalCollected)}
+                  hint={`${s.paidCount} payments${s.totalRefunded ? ` · ${formatRupees(s.totalRefunded)} refunded` : ""}`}
+                  accent="#FF9E4C"
+                />
+                <Tile label="Platform fees" value={formatRupees(s.platformFees || 0)} hint={`${summary.platformFeePercent}% on your plan`} accent="#8A5C77" />
+                <Tile label="Your earnings" value={formatRupees(s.netEarnings || 0)} hint="after refunds and fees" accent="#4F7161" />
               </div>
             </div>
 
@@ -321,6 +337,11 @@ const Billing = () => {
                   <Bar dataKey="net" fill={BAR} radius={[4, 4, 0, 0]} maxBarSize={36} />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+
+            <div className="space-y-4 mb-8">
+              <PackagesCard sessionFee={summary.sessionFee} />
+              <InvoiceSettingsCard invoice={summary.invoice} platformFeePercent={summary.platformFeePercent} />
             </div>
           </>
         ) : null}
@@ -387,7 +408,22 @@ const Billing = () => {
                           </div>
                         </td>
                         <td className="px-5 py-3.5 text-[#6B5B52] whitespace-nowrap">
-                          {formatShortDate(p.date)} · {formatTime(p.startTime)}
+                          {p.kind === "package" ? (
+                            <>
+                              <span className="font-medium text-[#2B221E]">{p.packageSessions}-session package</span>
+                              <span className="block text-xs text-[#A89C8F]">
+                                {p.clientPackage
+                                  ? p.clientPackage.state === "refunded"
+                                    ? "closed"
+                                    : `${p.clientPackage.remaining} left · until ${formatShortDate(p.clientPackage.expiresAt)}`
+                                  : `from ${formatShortDate(p.date)}`}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              {formatShortDate(p.date)} · {formatTime(p.startTime)}
+                            </>
+                          )}
                         </td>
                         <td className="px-5 py-3.5 text-[#6B5B52] whitespace-nowrap">
                           {p.paidAt ? format(parseISO(p.paidAt), "MMM d, h:mm a") : "—"}
@@ -395,6 +431,11 @@ const Billing = () => {
                         </td>
                         <td className="px-5 py-3.5 text-right font-semibold text-[#2B221E] tabular-nums whitespace-nowrap">
                           {formatRupees(p.amount)}
+                          {p.platformFee > 0 && (
+                            <span className="block text-[11px] font-normal text-[#A89C8F]" title={`Platform fee ${formatRupees(p.platformFee)}`}>
+                              you get {formatRupees(p.netAmount)}
+                            </span>
+                          )}
                         </td>
                         <td className="px-5 py-3.5">
                           <span className={`text-xs px-2.5 py-1 rounded-full font-medium whitespace-nowrap ${st.cls}`} title={p.failureReason || p.refund?.reason || ""}>
@@ -407,7 +448,7 @@ const Billing = () => {
                               onClick={() => handleReceipt(p)}
                               className="text-xs font-medium px-2.5 py-1.5 rounded-lg text-[#6B5B52] hover:bg-[#FFF3E6] hover:text-[#D96B00] transition"
                             >
-                              Receipt
+                              Invoice
                             </button>
                           )}
                           {p.status === "paid" && (

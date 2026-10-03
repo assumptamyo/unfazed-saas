@@ -188,7 +188,7 @@ const PortalHome = () => {
     );
   }
 
-  const { client, therapist, upcoming, past } = portal;
+  const { client, therapist, upcoming, past, packages = [] } = portal;
   const [next, ...later] = upcoming;
   const minsToNext = next ? differenceInMinutes(parseISO(`${next.date}T${next.startTime}`), now) : null;
 
@@ -265,6 +265,23 @@ const PortalHome = () => {
               )}
             </div>
           )}
+
+          {packages.map((p) => (
+            <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#F3F8F5] border border-[#D7E5DC] px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#4F7161]">Your package</p>
+                <p className="text-sm text-[#2B221E] mt-1">
+                  <strong>{p.remaining}</strong> of {p.sessionsTotal} sessions left · valid until{" "}
+                  {format(parseISO(p.expiresAt), "MMM d, yyyy")}
+                </p>
+              </div>
+              {therapist && (
+                <Link to={`/${therapist.slug}`} className="text-sm font-semibold text-[#4F7161] hover:underline">
+                  Book a session →
+                </Link>
+              )}
+            </div>
+          ))}
 
           {later.length > 0 && (
             <section>

@@ -1,6 +1,7 @@
 import Therapist from "../models/Therapist.js";
 import { generateAvailableSlots } from "../services/slotService.js";
 import { canAccess } from "../services/entitlementService.js";
+import { listOfferedPackages, serializePackage } from "../services/packageService.js";
 
 // @desc   Get logged-in therapist's own profile
 // @route  GET /api/therapist/me
@@ -23,8 +24,9 @@ export const getPublicProfile = async (req, res) => {
     const { isVerified, subscriptionTier, ...publicFields } = therapist.toObject();
     // Show the fee only when it will actually be charged (the plan includes online payments)
     const charges = publicFields.sessionFee > 0 && (await canAccess(therapist, "payments.online")).allowed;
+    const packages = charges ? (await listOfferedPackages(therapist._id)).map(serializePackage) : [];
     return res.status(200).json({
-      therapist: { ...publicFields, sessionFee: charges ? publicFields.sessionFee : 0, bookingOpen: isVerified },
+      therapist: { ...publicFields, sessionFee: charges ? publicFields.sessionFee : 0, bookingOpen: isVerified, packages },
     });
   } catch (error) {
     console.error("Get public profile error:", error.message);

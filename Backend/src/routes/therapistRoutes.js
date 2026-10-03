@@ -67,6 +67,7 @@ router.post(
       .custom((v) => Boolean(normalizeIndianMobile(v)))
       .withMessage("Enter a valid 10-digit Indian mobile number"),
     body("whatsappOptIn").optional().isBoolean({ strict: true }),
+    body("packageId").optional({ values: "falsy" }).isMongoId().withMessage("Invalid package"),
     body("date").isISO8601().withMessage("Valid date is required"),
     body("startTime").matches(/^([01]\d|2[0-3]):([0-5]\d)$/).withMessage("Invalid startTime"),
     body("consentAgreed").isBoolean({ strict: true }).withMessage("Consent confirmation is required"),

@@ -5,7 +5,8 @@ import Session from "../models/Session.js";
 import Payment from "../models/Payment.js";
 import { NOTIFICATION_RULES } from "../config/notificationRules.js";
 import { createPortalLink, frontendUrl } from "./portalService.js";
-import { generateReceiptPdf } from "./receiptService.js";
+import { invoicePdfForPayment } from "./invoiceService.js";
+import ClientPackage from "../models/ClientPackage.js";
 import { emitTo, isOnline } from "../socket.js";
 import { toDateKey, dateFromKey } from "../utils/dateUtils.js";
 import * as email from "./emailService.js";
@@ -39,6 +40,12 @@ const time12 = (hhmm) => {
 const when = (s) => (s ? `${dayLabel(s.date)} · ${time12(s.startTime)}` : "");
 const rupees = (paise) => `₹${(paise / 100).toLocaleString("en-IN")}`;
 
+// What the confirmation email says about a package (null if none)
+const packageSummary = (cp) =>
+  cp
+    ? { sessionsTotal: cp.sessionsTotal, remaining: cp.sessionsTotal - cp.sessionsUsed, expiresAt: toDateKey(cp.expiresAt) }
+    : null;
+
 // ---------- message templates: TEMPLATES[event][channel][audience](ctx, payload) ----------
 // email templates send and return { recipient } (or { skip: "reason" })
 // whatsapp templates return the message text
@@ -46,18 +53,19 @@ const rupees = (paise) => `₹${(paise / 100).toLocaleString("en-IN")}`;
 const TEMPLATES = {
   "booking.confirmed": {
     email: {
-      client: async ({ therapist, client, session, payment }) => {
+      client: async ({ therapist, client, session, payment, clientPackage }) => {
         const receipt = payment
           ? {
               amount: payment.amount,
+              isPackage: payment.kind === "package",
               receiptNumber: payment.receiptNumber,
               receiptUrl: `${process.env.API_PUBLIC_URL || `http://localhost:${process.env.PORT || 5000}`}/api/receipts/${payment.receiptToken}`,
-              pdf: await generateReceiptPdf({ payment, therapistName: therapist.name }),
+              pdf: await invoicePdfForPayment(payment),
             }
           : null;
         await email.sendBookingConfirmationToClient(
           client.email, client.name, therapist.name, toDateKey(session.date), session.startTime, session.endTime,
-          receipt, await createPortalLink(client)
+          receipt, await createPortalLink(client), packageSummary(clientPackage)
         );
         return { recipient: client.email };
       },
@@ -74,11 +82,13 @@ const TEMPLATES = {
         `Hi ${client.name}, your video session with ${therapist.name} is confirmed for ${when(session)}. Join from your client space: ${frontendUrl()}/portal/login`,
     },
     in_app: {
-      therapist: ({ client, session, payment }) => ({
-        title: "New booking",
-        body: `${client.name} booked ${when(session)}${payment ? ` · paid ${rupees(payment.amount)}` : ""}`,
-        link: "/therapist/appointments",
-      }),
+      therapist: ({ client, session, payment, clientPackage }) => {
+        let extra = "";
+        if (payment?.kind === "package") extra = ` · bought a ${clientPackage?.sessionsTotal}-session package (${rupees(payment.amount)})`;
+        else if (payment) extra = ` · paid ${rupees(payment.amount)}`;
+        else if (clientPackage) extra = ` · package session (${clientPackage.sessionsTotal - clientPackage.sessionsUsed} left)`;
+        return { title: "New booking", body: `${client.name} booked ${when(session)}${extra}`, link: "/therapist/appointments" };
+      },
     },
   },
 
@@ -87,14 +97,14 @@ const TEMPLATES = {
       client: async ({ therapist, client, session }, p) => {
         await email.sendCancellationToClient(
           client.email, client.name, therapist.name, session.date, session.startTime, session.endTime,
-          p.reason || "", p.refundAmount || 0
+          p.reason || "", p.refundAmount || 0, Boolean(session.packageCreditReturned)
         );
         return { recipient: client.email };
       },
     },
     whatsapp: {
       client: ({ therapist, client, session }, p) =>
-        `Hi ${client.name}, your session with ${therapist.name} on ${when(session)} has been cancelled.${p.refundAmount ? ` A refund of ${rupees(p.refundAmount)} has been issued.` : ""}`,
+        `Hi ${client.name}, your session with ${therapist.name} on ${when(session)} has been cancelled.${p.refundAmount ? ` A refund of ${rupees(p.refundAmount)} has been issued.` : ""}${session.packageCreditReturned ? " The session has been added back to your package." : ""}`,
     },
   },
 
@@ -234,7 +244,8 @@ const loadContext = async ({ therapistId, clientId, sessionId, paymentId }) => {
     sessionId ? Session.findById(sessionId) : null,
     paymentId ? Payment.findById(paymentId) : null,
   ]);
-  return { therapist, client, session, payment };
+  const clientPackage = session?.clientPackage ? await ClientPackage.findById(session.clientPackage) : null;
+  return { therapist, client, session, payment, clientPackage };
 };
 
 const serialize = (n) => ({

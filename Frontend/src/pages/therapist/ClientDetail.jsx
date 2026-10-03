@@ -6,6 +6,7 @@ import { getNotes } from "../../api/notesApi";
 import { sendPortalLink } from "../../api/messagesApi";
 import DashboardLayout from "../../components/dashboard/DashboardLayout";
 import ClientContact from "../../components/clients/ClientContact";
+import ClientBilling from "../../components/clients/ClientBilling";
 import { ArchiveClientModal, DeleteClientModal } from "../../components/clients/ClientActionModals";
 import { useToast } from "../../context/toastContext";
 import { apiError } from "../../components/appointments/appointmentUtils";
@@ -27,6 +28,7 @@ const ClientDetail = () => {
   const { id } = useParams();
   const [client, setClient] = useState(null);
   const [sessions, setSessions] = useState([]);
+  const [billing, setBilling] = useState({ packages: [], payments: [] });
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -42,6 +44,7 @@ const ClientDetail = () => {
         const res = await getClientById(id);
         setClient(res.data.client);
         setSessions(res.data.sessions);
+        setBilling({ packages: res.data.packages || [], payments: res.data.payments || [] });
       } catch {
         setNotFound(true);
       } finally {
@@ -219,6 +222,10 @@ const ClientDetail = () => {
               </p>
             )}
           </div>
+        )}
+
+        {(billing.packages.length > 0 || billing.payments.length > 0) && (
+          <ClientBilling packages={billing.packages} payments={billing.payments} />
         )}
 
         {/* Session history */}

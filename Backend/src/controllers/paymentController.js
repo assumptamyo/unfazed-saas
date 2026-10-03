@@ -1,14 +1,15 @@
 import Payment from "../models/Payment.js";
-import Therapist from "../models/Therapist.js";
 import { verifyCheckoutSignature, verifyWebhookSignature } from "../services/razorpayService.js";
 import { finalizePaidBooking } from "../services/paymentService.js";
-import { generateReceiptPdf } from "../services/receiptService.js";
+import { invoicePdfForPayment, invoiceFileName } from "../services/invoiceService.js";
 import { toDateKey } from "../utils/dateUtils.js";
 
 // What the booking page needs to show after checkout
 const publicStatus = (payment) => ({
   status: payment.status,
   amount: payment.amount,
+  kind: payment.kind || "session",
+  packageSessions: payment.kind === "package" ? payment.packagePurchase?.sessionCount || null : null,
   date: toDateKey(payment.booking.date),
   startTime: payment.booking.startTime,
   endTime: payment.booking.endTime,
@@ -108,9 +109,8 @@ export const getPublicReceipt = async (req, res) => {
   if (!payment) {
     return res.status(404).json({ message: "Receipt not found" });
   }
-  const therapist = await Therapist.findById(payment.therapist).select("name");
-  const pdf = await generateReceiptPdf({ payment, therapistName: therapist?.name || "Your therapist" });
-  return sendPdf(res, pdf, `Receipt-${payment.receiptNumber}.pdf`);
+  const pdf = await invoicePdfForPayment(payment);
+  return sendPdf(res, pdf, invoiceFileName(payment));
 };
 
 export { sendPdf };

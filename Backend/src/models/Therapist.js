@@ -78,6 +78,19 @@ const therapistSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    // Shown on invoices. Most therapy is GST-exempt (rate 0); a registered
+    // practice can add its GSTIN and charge 18% (prices are GST-inclusive).
+    gstin: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: "",
+    },
+    gstRate: {
+      type: Number,
+      enum: [0, 18],
+      default: 0,
+    },
   },
   { timestamps: true },
 );

@@ -4,14 +4,17 @@ export const getBillingSummary = () => axiosInstance.get("/billing/summary");
 export const updateSessionFee = (sessionFee) => axiosInstance.put("/billing/fee", { sessionFee });
 export const getPayments = (params = {}) => axiosInstance.get("/billing/payments", { params });
 export const refundPayment = (id, reason) => axiosInstance.post(`/billing/payments/${id}/refund`, { reason });
+export const getPackages = () => axiosInstance.get("/billing/packages");
+export const savePackage = (size, data) => axiosInstance.put(`/billing/packages/${size}`, data);
+export const updateInvoiceSettings = (data) => axiosInstance.put("/billing/invoice-settings", data);
 
-// Receipts need the login token, so fetch as a file and hand it to the browser
+// Invoices need the login token, so fetch as a file and hand it to the browser
 export const downloadReceipt = async (id, receiptNumber) => {
   const res = await axiosInstance.get(`/billing/payments/${id}/receipt`, { responseType: "blob" });
   const url = URL.createObjectURL(res.data);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `Receipt-${receiptNumber || id}.pdf`;
+  a.download = `Invoice-${receiptNumber || id}.pdf`;
   document.body.appendChild(a);
   a.click();
   a.remove();

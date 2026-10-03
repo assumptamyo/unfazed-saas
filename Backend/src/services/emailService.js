@@ -109,17 +109,21 @@ export const sendBookingConfirmationToClient = async (
   startTime,
   endTime,
   payment = null,
-  portalUrl = null
+  portalUrl = null,
+  packageInfo = null
 ) => {
   const paymentBlock = payment
     ? `
       <div style="border:1px solid #D7E5DC; background:#EEF3F0; border-radius:12px; padding:14px 16px; margin:16px 0;">
-        <p style="margin:0; font-weight:600; color:#4F7161;">Payment received · ${escapeHtml(rupees(payment.amount))}</p>
+        <p style="margin:0; font-weight:600; color:#4F7161;">Payment received · ${escapeHtml(rupees(payment.amount))}${payment.isPackage && packageInfo ? ` for a ${packageInfo.sessionsTotal}-session package` : ""}</p>
         <p style="margin:4px 0 0; font-size:13px; color:#6B6059;">
-          Receipt ${escapeHtml(payment.receiptNumber)} is attached.
+          Invoice ${escapeHtml(payment.receiptNumber)} is attached.
           ${payment.receiptUrl ? `You can also <a href="${escapeHtml(payment.receiptUrl)}" style="color:#D96B00;">download it here</a>.` : ""}
         </p>
       </div>`
+    : "";
+  const packageBlock = packageInfo
+    ? `<p style="color:#4F7161;"><strong>Your package:</strong> ${packageInfo.remaining} of ${packageInfo.sessionsTotal} sessions left, valid until ${escapeHtml(formatDate(packageInfo.expiresAt))}. Book your next sessions from the same booking page — they'll use your package automatically.</p>`
     : "";
 
   await send(
@@ -130,12 +134,13 @@ export const sendBookingConfirmationToClient = async (
       <p>Your session with <strong>${escapeHtml(therapistName)}</strong> has been confirmed.</p>
       ${sessionBlock(date, startTime, endTime)}
       ${paymentBlock}
+      ${packageBlock}
       <p>This is a <strong>video session</strong>. When it's time, join from your private client space —
       the room opens 10 minutes before the start. You can also message your therapist there.</p>
       ${portalUrl ? button(portalUrl, "Open your client space") : ""}
       <p style="color:#A89C8F; font-size:13px;">Keep this email private: the button is your personal link.</p>
     `,
-    payment?.pdf ? [{ filename: `Receipt-${payment.receiptNumber}.pdf`, content: payment.pdf }] : []
+    payment?.pdf ? [{ filename: `Invoice-${payment.receiptNumber}.pdf`, content: payment.pdf }] : []
   );
 };
 
@@ -170,7 +175,8 @@ export const sendCancellationToClient = async (
   startTime,
   endTime,
   reason,
-  refundAmount = 0
+  refundAmount = 0,
+  creditReturned = false
 ) => {
   await send(
     to,
@@ -181,6 +187,7 @@ export const sendCancellationToClient = async (
       ${sessionBlock(date, startTime, endTime)}
       ${reason ? `<p><strong>Message from your therapist:</strong><br/>${escapeHtml(reason)}</p>` : ""}
       ${refundAmount ? `<p style="color:#4F7161;"><strong>A full refund of ${escapeHtml(rupees(refundAmount))} has been issued.</strong> It usually reaches your account within 5–7 working days.</p>` : ""}
+      ${creditReturned ? `<p style="color:#4F7161;"><strong>This session has been added back to your package</strong>, so you can use it for another booking.</p>` : ""}
       <p>You're welcome to book a new time from your therapist's booking page.</p>
     `
   );

@@ -6,6 +6,7 @@ import { exchangePortalToken, issueClientToken } from "../services/portalService
 import { generateCode, hashCode, checkCode, resendBlocked, CODE_TTL_MINUTES } from "../services/codeService.js";
 import { sendVerificationCodeEmail } from "../services/emailService.js";
 import { getSharedNotesForClient } from "../services/clientNoteService.js";
+import { findClientPackages, serializeClientPackage } from "../services/packageService.js";
 import { getJoinInfo, joinWindow, videoProvider } from "../services/videoService.js";
 import { getThread, markRead, sendMessage } from "../services/messageService.js";
 import { toDateKey, todayKey, dateFromKey, addDaysToKey, toDateTime } from "../utils/dateUtils.js";
@@ -31,8 +32,9 @@ export const startPortalSession = async (req, res) => {
 export const getPortal = async (req, res) => {
   try {
     const client = req.client;
-    const [therapist, sessions] = await Promise.all([
+    const [therapist, sessions, clientPackages] = await Promise.all([
       Therapist.findById(client.therapist).select("name slug photoUrl qualifications"),
+      findClientPackages(client.therapist, client._id),
       Session.find({
         therapist: client.therapist,
         client: client._id,
@@ -69,6 +71,8 @@ export const getPortal = async (req, res) => {
       upcoming: items.filter((s) => !s.isPast && s.status === "confirmed"),
       past: items.filter((s) => s.isPast || s.status !== "confirmed").reverse().slice(0, 10),
       videoProvider: videoProvider(),
+      // Packages that can still be used, plus recently finished ones
+      packages: clientPackages.map(serializeClientPackage).filter((p) => p.state === "active").slice(0, 3),
     });
   } catch (error) {
     console.error("Portal error:", error.message);

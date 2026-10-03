@@ -33,6 +33,7 @@ const EMPTY_FORM = {
   presentingConcern: "",
   consentAgreed: false,
   whatsappOptIn: true,
+  packageId: "",
 };
 
 // 10-digit Indian mobile (the +91 is shown as a fixed prefix)
@@ -89,8 +90,27 @@ const Confirmation = ({ booking, onDone }) => (
               Paid {formatRupees(booking.amount)}
             </span>
           )}
+          {booking.usedPackage && (
+            <span className="text-xs font-semibold text-[#4F7161] bg-[#EEF3F0] px-2.5 py-1 rounded-full">
+              From your package
+            </span>
+          )}
         </div>
       </div>
+
+      {booking.kind === "package" && booking.packageSessions && (
+        <p className="text-sm text-[#4F7161] -mt-1 mb-4">
+          Your {booking.packageSessions}-session package is active — {booking.packageSessions - 1} more sessions to
+          book from this page.
+        </p>
+      )}
+      {booking.usedPackage && (
+        <p className="text-sm text-[#4F7161] -mt-1 mb-4">
+          {booking.usedPackage.remaining
+            ? `${booking.usedPackage.remaining} of ${booking.usedPackage.sessionsTotal} sessions left in your package.`
+            : "That was the last session in your package."}
+        </p>
+      )}
 
       <p className="text-xs text-[#8A7A6D] mb-4">
         Your session is by video — join it from your client space.
@@ -127,7 +147,7 @@ const Confirmation = ({ booking, onDone }) => (
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              Download receipt
+              Download invoice
             </a>
           )}
           {booking.receiptToken && (
@@ -145,7 +165,7 @@ const Confirmation = ({ booking, onDone }) => (
   </div>
 );
 
-const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
+const BookingCalendar = ({ slug, fee = 0, therapistName = "", packages = [] }) => {
   const [daySlots, setDaySlots] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -259,7 +279,7 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
       amount: checkout.order.amount,
       currency: checkout.order.currency,
       name: "Unfazed",
-      description: `Therapy session with ${checkout.therapistName}`,
+      description: `${checkout.description || "Therapy session"} with ${checkout.therapistName}`,
       prefill: checkout.prefill,
       theme: { color: "#FF9E4C" },
       handler: (response) => confirmPayment(response, checkout.order.id),
@@ -288,7 +308,7 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
       await openCheckout(data.checkout);
       return; // booking state is cleared by the checkout callbacks
     }
-    finishBooking({ ...data.session, amount: 0 });
+    finishBooking({ ...data.session, amount: 0, usedPackage: data.usedPackage || null });
     setBooking(false);
   };
 
@@ -398,7 +418,14 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
     >
       {fee > 0 && (
         <div className="flex items-center justify-between gap-3 mb-5 pb-4 border-b border-[#F3EBDF]">
-          <span className="text-sm text-[#6B6059]">Session fee</span>
+          <span className="text-sm text-[#6B6059]">
+            Session fee
+            {packages.length > 0 && (
+              <span className="block text-xs text-[#4F7161]">
+                Packages from {formatRupees(Math.min(...packages.map((p) => p.pricePerSession)))} a session
+              </span>
+            )}
+          </span>
           <span className="text-lg font-semibold text-[#2B221E]">
             {formatRupees(fee)}
           </span>
@@ -483,7 +510,7 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
             {verifying || booking
               ? "Confirming…"
               : fee > 0
-                ? "Confirm & continue to payment"
+                ? "Confirm & continue"
                 : "Confirm booking"}
           </button>
           <div className="flex items-center justify-center gap-4 mt-4 text-xs">
@@ -655,6 +682,45 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
             </span>
           </label>
 
+          {fee > 0 && packages.length > 0 && (
+            <fieldset className="pt-2">
+              <legend className="text-xs font-semibold text-[#6B6059] mb-2">How would you like to pay?</legend>
+              <div className="space-y-2">
+                {[{ id: "", label: "Just this session", total: fee }, ...packages.map((p) => ({
+                  id: p.id,
+                  label: `${p.sessionCount} sessions`,
+                  total: p.totalPrice,
+                  detail: `${formatRupees(p.pricePerSession)} each · valid ${p.validityDays} days`,
+                  saving: (fee - p.pricePerSession) * p.sessionCount,
+                }))].map((opt) => (
+                  <label
+                    key={opt.id || "single"}
+                    className={`flex items-center gap-3 rounded-xl border px-3.5 py-2.5 cursor-pointer transition ${
+                      form.packageId === opt.id ? "border-[#FF9E4C] bg-[#FFF8F0]" : "border-[#EFE6DA] hover:border-[#FFB877]"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="packageId"
+                      checked={form.packageId === opt.id}
+                      onChange={() => setForm({ ...form, packageId: opt.id })}
+                      className="accent-[#FF9E4C]"
+                    />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-medium text-[#2B221E]">{opt.label}</span>
+                      {opt.detail && <span className="block text-xs text-[#8A7A6D]">{opt.detail}</span>}
+                    </span>
+                    <span className="text-right">
+                      <span className="block text-sm font-semibold text-[#2B221E]">{formatRupees(opt.total)}</span>
+                      {opt.saving > 0 && <span className="block text-[11px] text-[#4F7161]">save {formatRupees(opt.saving)}</span>}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-[11px] text-[#A89C8F] mt-2">Already bought a package? It's used automatically — no payment needed.</p>
+            </fieldset>
+          )}
+
           <button
             type="submit"
             disabled={booking}
@@ -663,7 +729,7 @@ const BookingCalendar = ({ slug, fee = 0, therapistName = "" }) => {
             {booking
               ? "Please wait…"
               : fee > 0
-                ? `Continue — ${formatRupees(fee)}`
+                ? `Continue — ${formatRupees(packages.find((p) => p.id === form.packageId)?.totalPrice || fee)}`
                 : "Continue"}
           </button>
           <p className="text-[11px] text-center text-[#A89C8F]">

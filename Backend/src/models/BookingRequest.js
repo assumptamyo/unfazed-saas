@@ -28,6 +28,11 @@ const bookingRequestSchema = new mongoose.Schema(
       occupation: { type: String, default: "" },
       presentingConcern: { type: String, default: "" },
     },
+    // Package the client chose to buy with this booking (if any)
+    packageId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Package",
+    },
     codeHash: { type: String, required: true },
     attempts: { type: Number, default: 0 },
     sends: { type: Number, default: 1 },
