@@ -2,6 +2,7 @@ import { useSearchParams } from "react-router-dom";
 import DashboardLayout from "../../components/dashboard/DashboardLayout";
 import WeeklyHours from "../../components/availability/WeeklyHours";
 import TimeOffPlanner from "../../components/availability/TimeOffPlanner";
+import SessionFeeCard from "../../components/availability/SessionFeeCard";
 
 const TABS = [
   { key: "weekly", label: "Weekly hours", hint: "Your regular working pattern" },
@@ -23,6 +24,8 @@ const Schedule = () => {
             specific dates.
           </p>
         </div>
+
+        <SessionFeeCard />
 
         <div className="flex gap-1 p-1 bg-[#F3EBDF]/70 rounded-2xl mb-8 w-full sm:w-fit overflow-x-auto no-scrollbar">
           {TABS.map((t) => {

@@ -21,8 +21,36 @@ import { getDashboardStats } from "../controllers/dashboardController.js";
 const router = express.Router();
 
 router.get("/me", authMiddleware, getMyProfile);
-router.put("/me", authMiddleware, updateMyProfile);
-router.post("/upload-photo", authMiddleware, upload.single("photo"), uploadPhoto);
+const listRule = (field, maxItems, maxLength) => [
+  body(field).optional().isArray({ max: maxItems }).withMessage(`Add at most ${maxItems} ${field}`),
+  body(`${field}.*`).isString().trim().isLength({ min: 1, max: maxLength }).withMessage(`Each entry must be 1-${maxLength} characters`),
+];
+
+router.put(
+  "/me",
+  authMiddleware,
+  [
+    body("name").optional().isString().trim().isLength({ min: 2, max: 80 }).withMessage("Name must be 2-80 characters"),
+    body("bio").optional().isString().isLength({ max: 1500 }).withMessage("Bio can be at most 1500 characters"),
+    body("qualifications").optional().isString().isLength({ max: 300 }).withMessage("Qualifications can be at most 300 characters"),
+    body("yearsOfExperience").optional().isInt({ min: 0, max: 70 }).withMessage("Years of experience must be 0-70").toInt(),
+    body("photoUrl").optional().isString().isLength({ max: 500 }),
+    ...listRule("specializations", 15, 50),
+    ...listRule("languages", 12, 30),
+  ],
+  validateRequest,
+  updateMyProfile
+);
+
+// Turn upload problems (wrong type, too big) into a clear 400 instead of a server error
+const photoUpload = (req, res, next) =>
+  upload.single("photo")(req, res, (err) => {
+    if (!err) return next();
+    const message = err.code === "LIMIT_FILE_SIZE" ? "Photo must be 5MB or smaller" : err.message;
+    return res.status(400).json({ message });
+  });
+
+router.post("/upload-photo", authMiddleware, photoUpload, uploadPhoto);
 router.get("/dashboard-stats", authMiddleware, getDashboardStats);
 
 router.get("/:slug/slots", getTherapistSlots);

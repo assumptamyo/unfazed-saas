@@ -22,6 +22,8 @@ import PortalEntry from "../pages/portal/PortalEntry";
 import PortalHome from "../pages/portal/PortalHome";
 import PortalRoom from "../pages/portal/PortalRoom";
 import PortalLogin from "../pages/portal/PortalLogin";
+import Plans from "../pages/therapist/Plans";
+import Analytics from "../pages/therapist/Analytics";
 
 const AppRoutes = () => {
   return (
@@ -94,6 +96,22 @@ const AppRoutes = () => {
       <Route path="/portal/login" element={<PortalLogin />} />
       <Route path="/portal/session/:id" element={<PortalRoom />} />
       <Route path="/portal/:token" element={<PortalEntry />} />
+      <Route
+        path="/therapist/plans"
+        element={
+          <ProtectedRoute>
+            <Plans />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/therapist/analytics"
+        element={
+          <ProtectedRoute>
+            <Analytics />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/therapist/billing"
         element={

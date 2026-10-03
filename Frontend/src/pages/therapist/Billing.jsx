@@ -14,6 +14,7 @@ import {
 } from "../../api/billingApi";
 import { apiError, formatShortDate, formatTime } from "../../components/appointments/appointmentUtils";
 import { useToast } from "../../context/toastContext";
+import { useEntitlement } from "../../context/entitlementContext";
 
 const BAR = "#D96B00"; // validated: ≥3:1 against the card surface
 
@@ -35,6 +36,8 @@ const FILTERS = [
 
 const FeeCard = ({ summary, onSaved }) => {
   const { notify } = useToast();
+  const { can, promptUpgrade } = useEntitlement();
+  const paymentsOnPlan = can("payments.online");
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(String((summary.sessionFee || 0) / 100));
   const [saving, setSaving] = useState(false);
@@ -105,10 +108,12 @@ const FeeCard = ({ summary, onSaved }) => {
             {summary.sessionFee ? formatRupees(summary.sessionFee) : "Free"}
           </p>
           <button
-            onClick={() => setEditing(true)}
+            onClick={() =>
+              paymentsOnPlan ? setEditing(true) : promptUpgrade("payments.online", "Take payments at booking")
+            }
             className="mb-1 text-sm font-medium px-4 py-2 rounded-full border border-white/15 text-white/85 hover:bg-white/10 transition"
           >
-            Change
+            {paymentsOnPlan ? "Change" : "🔒 Unlock"}
           </button>
         </div>
       )}

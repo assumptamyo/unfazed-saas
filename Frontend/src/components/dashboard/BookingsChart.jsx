@@ -1,7 +1,7 @@
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { format, parseISO } from "date-fns";
 
-const BookingsChart = ({ data }) => {
+const BookingsChart = ({ data = [] }) => {
   const formatted = data.map((d) => ({ ...d, label: format(parseISO(d.date), "MMM d") }));
 
   return (

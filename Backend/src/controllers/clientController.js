@@ -5,6 +5,7 @@ import Message from "../models/Message.js";
 import { dateFromKey, todayKey, toDateTime } from "../utils/dateUtils.js";
 import { sendCancellationToClient, sendPortalLinkEmail } from "../services/emailService.js";
 import { createPortalLink } from "../services/portalService.js";
+import { canAccess, upgradeRequired } from "../services/entitlementService.js";
 import { refundSessionPayment } from "../services/paymentService.js";
 
 // @desc   Get all clients for the logged-in therapist (with search/filter)
@@ -227,6 +228,9 @@ export const archiveClient = async (req, res) => {
 // @route  POST /api/clients/:id/restore
 export const restoreClient = async (req, res) => {
   try {
+    const access = await canAccess(req.therapist, "clients.active", { adding: 1 });
+    if (!access.allowed) return upgradeRequired(res, access);
+
     const client = await Client.findOneAndUpdate(
       { _id: req.params.id, therapist: req.therapist._id },
       { archivedAt: null },

@@ -67,6 +67,11 @@ const therapistSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    // Key of a SubscriptionTierConfig document; null means the default tier
+    subscriptionTier: {
+      type: String,
+      default: null,
+    },
     // Price per session in paise (₹1 = 100). 0 means booking is free, no online payment.
     sessionFee: {
       type: Number,

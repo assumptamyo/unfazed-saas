@@ -9,6 +9,8 @@ import appointmentRoutes from "./routes/appointmentRoutes.js";
 import notesRoutes from "./routes/notesRoutes.js";
 import { paymentRouter, receiptRouter, billingRouter } from "./routes/paymentRoutes.js";
 import { messageRouter, portalRouter } from "./routes/messageRoutes.js";
+import subscriptionRoutes from "./routes/subscriptionRoutes.js";
+import analyticsRoutes from "./routes/analyticsRoutes.js";
 
 
 const app = express();
@@ -46,6 +48,9 @@ app.use("/api/billing", billingRouter);
 
 app.use("/api/messages", messageRouter);
 app.use("/api/portal", portalRouter);
+
+app.use("/api/subscription", subscriptionRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 app.use(errorHandler);
 

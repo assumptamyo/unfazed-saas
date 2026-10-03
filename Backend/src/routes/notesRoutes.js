@@ -22,6 +22,7 @@ router.get(
   [
     query("status").optional().isIn(["draft", "signed"]).withMessage("Invalid status"),
     query("client").optional().isMongoId().withMessage("Invalid client id"),
+    query("visibility").optional().isIn(["private", "shared"]).withMessage("Invalid visibility"),
   ],
   validateRequest,
   getNotes
@@ -32,7 +33,9 @@ router.get("/pending", getPendingNotes);
 const sessionParam = param("sessionId").isMongoId().withMessage("Invalid session id");
 const idParam = param("id").isMongoId().withMessage("Invalid note id");
 
-router.get("/session/:sessionId", [sessionParam], validateRequest, getNoteForSession);
+const visibilityQuery = query("visibility").optional().isIn(["private", "shared"]).withMessage("Invalid visibility");
+
+router.get("/session/:sessionId", [sessionParam, visibilityQuery], validateRequest, getNoteForSession);
 
 router.put(
   "/session/:sessionId",
@@ -40,6 +43,7 @@ router.put(
     sessionParam,
     body("template").optional().isIn(["soap", "dap", "free"]).withMessage("Invalid template"),
     body("sections").optional().isObject().withMessage("sections must be an object"),
+    body("visibility").optional().isIn(["private", "shared"]).withMessage("Invalid visibility"),
   ],
   validateRequest,
   saveDraft

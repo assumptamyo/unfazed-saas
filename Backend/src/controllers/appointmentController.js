@@ -77,7 +77,7 @@ export const getAppointments = async (req, res) => {
 
     const [sessions, notes] = await Promise.all([
       Session.find({ therapist: req.therapist._id }).populate("client", "name email phone tags").lean(),
-      SessionNote.find({ therapist: req.therapist._id }).select("session status").lean(),
+      SessionNote.find({ therapist: req.therapist._id, visibility: "private" }).select("session status").lean(),
     ]);
     const noteStatusBySession = Object.fromEntries(notes.map((n) => [String(n.session), n.status]));
 
@@ -138,7 +138,7 @@ export const getAppointmentById = async (req, res) => {
     }
 
     const [note, payment] = await Promise.all([
-      SessionNote.findOne({ session: session._id, therapist: req.therapist._id }).select("status"),
+      SessionNote.findOne({ session: session._id, therapist: req.therapist._id, visibility: "private" }).select("status"),
       Payment.findOne({ session: session._id, status: { $in: ["paid", "refunded"] } }).select(
         "amount status method receiptNumber paidAt refund"
       ),

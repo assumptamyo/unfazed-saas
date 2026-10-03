@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { getClients } from "../../api/clientApi";
 import DashboardLayout from "../../components/dashboard/DashboardLayout";
+import { useEntitlement } from "../../context/entitlementContext";
 
 const SearchIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -22,6 +23,13 @@ const Clients = () => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [sortBy, setSortBy] = useState("recent");
+  const { feature, refresh } = useEntitlement();
+  const cap = feature("clients.active");
+
+  // Client count may have changed since login (new bookings, archiving)
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   const loadClients = async () => {
     setLoading(true);
@@ -60,6 +68,30 @@ const Clients = () => {
             {clients.length} {clients.length === 1 ? "client" : "clients"} total
           </p>
         </div>
+
+        {cap && cap.limit !== null && cap.limit !== undefined && (
+          <div className="flex flex-wrap items-center gap-4 bg-white border border-[#EFE6DA] rounded-2xl px-5 py-3.5 mb-6">
+            <div className="flex-1 min-w-[180px]">
+              <div className="flex justify-between text-xs text-[#6B5B52] mb-1.5">
+                <span>Active clients on your {cap.tier?.name} plan</span>
+                <span className="font-semibold tabular-nums">
+                  {cap.usage} / {cap.limit}
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-[#F3EBDF] overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${cap.usage >= cap.limit ? "bg-[#C8553D]" : "bg-[#FF9E4C]"}`}
+                  style={{ width: `${Math.min((cap.usage / cap.limit) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+            {cap.usage >= cap.limit && (
+              <Link to="/therapist/plans" className="text-sm font-semibold text-[#D96B00] hover:underline">
+                At your limit — upgrade →
+              </Link>
+            )}
+          </div>
+        )}
 
         {/* Filters */}
         <div className="flex flex-wrap gap-3 mb-6">

@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useSocketEvents } from "../../hooks/useSocket";
 import { getUnreadCount } from "../../api/messagesApi";
+import ProfileMenu from "./ProfileMenu";
+import { formatShortDate, formatTime } from "../appointments/appointmentUtils";
 
 const BellIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -65,8 +67,6 @@ const Topbar = ({ therapist, recentActivity = [], searchValue, onSearchChange, o
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const initial = therapist?.name?.charAt(0)?.toUpperCase() || "?";
-  const slugAddress = therapist?.slug ? `unfazed.in/${therapist.slug}` : "unfazed.in/profile";
 
   return (
     <header
@@ -136,7 +136,7 @@ const Topbar = ({ therapist, recentActivity = [], searchValue, onSearchChange, o
                   Recent Bookings
                 </p>
                 <span className="text-[10px] bg-[#FF9E4C]/15 text-[#D96B00] px-2 py-0.5 rounded-full font-medium">
-                  {recentActivity.length} New
+                  Latest {Math.min(recentActivity.length, 5)}
                 </span>
               </div>
 
@@ -145,12 +145,20 @@ const Topbar = ({ therapist, recentActivity = [], searchValue, onSearchChange, o
                   <p className="text-sm text-[#6B5B52] px-5 py-6 text-center">No recent activity.</p>
                 ) : (
                   recentActivity.slice(0, 5).map((s) => (
-                    <div key={s.id} className="px-5 py-3 hover:bg-[#F9F6F0] transition">
+                    <Link
+                      key={s.id}
+                      to="/therapist/appointments"
+                      onClick={() => setShowNotifications(false)}
+                      className="block px-5 py-3 hover:bg-[#F9F6F0] transition"
+                    >
                       <p className="text-sm text-[#2B221E]">
                         <span className="font-semibold">{s.clientName}</span> booked a session
                       </p>
-                      <p className="text-xs text-[#6B5B52] mt-0.5">{s.date} · {s.startTime}</p>
-                    </div>
+                      {/* s.date is a stored date like 2026-10-03T00:00:00.000Z; show it as "Sat, Oct 3 · 4:00 PM" */}
+                      <p className="text-xs text-[#6B5B52] mt-0.5">
+                        {formatShortDate(String(s.date).slice(0, 10))} · {formatTime(s.startTime)}
+                      </p>
+                    </Link>
                   ))
                 )}
               </div>
@@ -167,30 +175,7 @@ const Topbar = ({ therapist, recentActivity = [], searchValue, onSearchChange, o
           <PlusIcon />
         </Link>
 
-        {/* User Profile Pill */}
-        <div className="flex items-center gap-3 pl-3 border-l border-[#E5DCD3] ml-1">
-          {therapist?.photoUrl ? (
-            <img src={therapist.photoUrl} alt={therapist.name} className="w-10 h-10 rounded-2xl object-cover border border-[#E5DCD3]" />
-          ) : (
-            <div
-              className="w-10 h-10 rounded-2xl bg-[#FF9E4C]/20 flex items-center justify-center text-[#D96B00] text-sm font-bold border border-[#FF9E4C]/30"
-              style={{ fontFamily: "Literata, serif" }}
-            >
-              {initial}
-            </div>
-          )}
-          <div className="hidden lg:block text-left">
-            <p className="text-sm font-semibold text-[#2B221E] leading-tight">{therapist?.name}</p>
-            <a
-              href={`/${therapist?.slug}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-[#D96B00] font-medium leading-tight mt-0.5 hover:underline block"
-            >
-              {slugAddress}
-            </a>
-          </div>
-        </div>
+        <ProfileMenu therapist={therapist} />
 
       </div>
     </header>

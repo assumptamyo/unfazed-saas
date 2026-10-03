@@ -17,6 +17,7 @@ const ToastProvider = ({ children }) => {
 
   const notify = useCallback(
     (message, { type = "success", action, duration = 4500 } = {}) => {
+      if (!message) return; // e.g. errors already shown by the upgrade prompt
       const id = ++idRef.current;
       setToasts((prev) => [...prev.slice(-2), { id, message, type, action }]);
       setTimeout(() => dismiss(id), duration);

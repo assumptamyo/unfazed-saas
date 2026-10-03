@@ -1,12 +1,22 @@
 import SessionNote, { NOTE_TEMPLATES, NOTE_SECTION_KEYS } from "../models/SessionNote.js";
+import Client from "../models/Client.js";
+import { sanitizeRichText, richTextToPlain } from "../utils/richText.js";
+import { createPortalLink } from "../services/portalService.js";
+import { sendSharedNoteEmail } from "../services/emailService.js";
 import Session from "../models/Session.js";
 import { toDateKey, addDaysToKey, todayKey, dateFromKey } from "../utils/dateUtils.js";
+import { canAccess, upgradeRequired } from "../services/entitlementService.js";
 
 const MAX_SECTION_LENGTH = 20000;
 
+// "body" holds rich text (HTML); the other sections are plain text
+const RICH_SECTIONS = new Set(["body"]);
+
+const visibilityOf = (value) => (value === "shared" ? "shared" : "private");
+
 const sectionText = (note) =>
   (NOTE_TEMPLATES[note.template] || NOTE_SECTION_KEYS)
-    .map((key) => note.sections?.[key] || "")
+    .map((key) => (RICH_SECTIONS.has(key) ? richTextToPlain(note.sections?.[key]) : note.sections?.[key] || ""))
     .filter(Boolean);
 
 const serializeNote = (note) => {
@@ -26,6 +36,8 @@ const serializeNote = (note) => {
           status: note.session.status,
         }
       : null,
+    visibility: note.visibility || "private",
+    sharedAt: note.sharedAt || null,
     template: note.template,
     sections: Object.fromEntries(NOTE_SECTION_KEYS.map((k) => [k, note.sections?.[k] || ""])),
     status: note.status,
@@ -45,9 +57,10 @@ const populateNote = (query) =>
 // @route  GET /api/notes?status=draft|signed&client=<id>&search=
 export const getNotes = async (req, res) => {
   try {
-    const { status, client, search } = req.query;
+    const { status, client, search, visibility } = req.query;
     const query = { therapist: req.therapist._id };
     if (client) query.client = client;
+    if (visibility) query.visibility = visibilityOf(visibility);
 
     const notes = await populateNote(SessionNote.find(query).sort({ updatedAt: -1 }));
     let items = notes.map(serializeNote);
@@ -65,7 +78,7 @@ export const getNotes = async (req, res) => {
       items = items.filter(
         (n) =>
           n.client?.name.toLowerCase().includes(q) ||
-          Object.values(n.sections).some((t) => t.toLowerCase().includes(q))
+          Object.entries(n.sections).some(([k, t]) => (RICH_SECTIONS.has(k) ? richTextToPlain(t) : t).toLowerCase().includes(q))
       );
     }
 
@@ -92,6 +105,7 @@ export const getPendingNotes = async (req, res) => {
     const notes = await SessionNote.find({
       therapist: req.therapist._id,
       session: { $in: sessions.map((s) => s._id) },
+      visibility: "private",
     }).select("session status");
     const noteBySession = Object.fromEntries(notes.map((n) => [String(n.session), n.status]));
 
@@ -126,7 +140,11 @@ export const getNoteForSession = async (req, res) => {
       return res.status(404).json({ message: "Session not found" });
     }
 
-    const note = await populateNote(SessionNote.findOne({ session: session._id, therapist: req.therapist._id }));
+    const visibility = visibilityOf(req.query.visibility);
+    const both = await SessionNote.find({ session: session._id, therapist: req.therapist._id }).select("visibility status");
+    const note = await populateNote(
+      SessionNote.findOne({ session: session._id, therapist: req.therapist._id, visibility })
+    );
 
     // The most recent signed note for this client from an earlier session,
     // so the therapist can see what was planned last time
@@ -137,6 +155,7 @@ export const getNoteForSession = async (req, res) => {
           therapist: req.therapist._id,
           client: session.client._id,
           status: "signed",
+          visibility: "private",
           session: { $ne: session._id },
         })
       );
@@ -174,7 +193,10 @@ export const getNoteForSession = async (req, res) => {
             completedSessions: sessionCount,
           }
         : null,
+      visibility,
       note: note ? serializeNote(note) : null,
+      // Draft/signed state of both notes for this session, for the editor's tabs
+      notes: Object.fromEntries(["private", "shared"].map((v) => [v, both.find((n) => n.visibility === v)?.status || null])),
       previous,
     });
   } catch (error) {
@@ -187,7 +209,10 @@ export const getNoteForSession = async (req, res) => {
 // @route  PUT /api/notes/session/:sessionId
 export const saveDraft = async (req, res) => {
   try {
-    const { template = "soap", sections = {} } = req.body;
+    const visibility = visibilityOf(req.body.visibility);
+    const { sections = {} } = req.body;
+    // Shared notes are always free write; templates are for the private clinical record
+    const template = visibility === "shared" ? "free" : req.body.template || "soap";
 
     if (!NOTE_TEMPLATES[template]) {
       return res.status(400).json({ message: "Unknown note template" });
@@ -200,7 +225,7 @@ export const saveDraft = async (req, res) => {
       if (typeof value !== "string" || value.length > MAX_SECTION_LENGTH) {
         return res.status(400).json({ message: `The ${key} section is too long or invalid` });
       }
-      cleanSections[`sections.${key}`] = value;
+      cleanSections[`sections.${key}`] = RICH_SECTIONS.has(key) ? sanitizeRichText(value) : value;
     }
 
     const session = await Session.findOne({ _id: req.params.sessionId, therapist: req.therapist._id });
@@ -211,7 +236,15 @@ export const saveDraft = async (req, res) => {
       return res.status(400).json({ message: "This session has no client attached" });
     }
 
-    const existing = await SessionNote.findOne({ session: session._id, therapist: req.therapist._id });
+    const existing = await SessionNote.findOne({ session: session._id, therapist: req.therapist._id, visibility });
+
+    // Structured templates are a plan feature. A note that already uses one can
+    // still be edited, so a downgrade never locks a therapist out of their own draft.
+    if (template !== "free" && existing?.template !== template) {
+      const access = await canAccess(req.therapist, "notes.structuredTemplates");
+      if (!access.allowed) return upgradeRequired(res, access);
+    }
+
     if (existing?.status === "signed") {
       return res.status(409).json({ message: "This note is signed and locked. Add an addendum instead." });
     }
@@ -221,10 +254,10 @@ export const saveDraft = async (req, res) => {
 
     const note = await populateNote(
       SessionNote.findOneAndUpdate(
-        { session: session._id, therapist: req.therapist._id },
+        { session: session._id, therapist: req.therapist._id, visibility },
         {
           $set: { template, ...cleanSections },
-          $setOnInsert: { client: session.client, status: "draft" },
+          $setOnInsert: { client: session.client, status: "draft", visibility },
         },
         { new: true, upsert: true, runValidators: true }
       )
@@ -254,9 +287,25 @@ export const signNote = async (req, res) => {
 
     note.status = "signed";
     note.signedAt = new Date();
+    if (note.visibility === "shared") note.sharedAt = note.signedAt;
     await note.save();
 
-    return res.status(200).json({ message: "Note signed", note: serializeNote(note) });
+    // Let the client know a note is waiting in their space (the email never contains the note)
+    if (note.visibility === "shared") {
+      try {
+        const client = await Client.findById(note.client._id || note.client);
+        if (client && !client.archivedAt) {
+          await sendSharedNoteEmail(client.email, client.name, req.therapist.name, await createPortalLink(client));
+        }
+      } catch (emailError) {
+        console.error("Shared note email failed:", emailError.message);
+      }
+    }
+
+    return res.status(200).json({
+      message: note.visibility === "shared" ? "Note signed and shared with your client" : "Note signed",
+      note: serializeNote(note),
+    });
   } catch (error) {
     console.error("Sign note error:", error.message);
     return res.status(500).json({ message: "Server error while signing note" });

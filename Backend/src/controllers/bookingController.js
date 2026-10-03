@@ -15,6 +15,7 @@ import {
   CODE_TTL_MINUTES,
 } from "../services/codeService.js";
 import { dateFromKey, toDateKey } from "../utils/dateUtils.js";
+import { canAccess } from "../services/entitlementService.js";
 import {
   sendBookingConfirmationToClient,
   sendNewBookingNotificationToTherapist,
@@ -59,7 +60,10 @@ const completeBooking = async (therapist, booking, res) => {
   const clientToken = issueClientToken(client);
   const dateKey = toDateKey(booking.date);
 
-  if (therapist.sessionFee > 0) {
+  // Only charge when the therapist's plan includes online payments
+  const charges = therapist.sessionFee > 0 && (await canAccess(therapist, "payments.online")).allowed;
+
+  if (charges) {
     if (!paymentsEnabled()) {
       return res.status(503).json({
         message: "Online payment isn't available right now. Please contact your therapist directly.",
@@ -157,6 +161,19 @@ export const startBooking = async (req, res) => {
       occupation: b.occupation || "",
       presentingConcern: b.presentingConcern || "",
     };
+
+    // A therapist at their plan's active-client cap can still see existing clients,
+    // but can't take on new ones (or bring back archived ones) until they upgrade
+    const existingClient = await Client.findOne({ therapist: therapist._id, email: booking.clientEmail });
+    if (!existingClient || existingClient.archivedAt) {
+      const access = await canAccess(therapist, "clients.active", { adding: 1 });
+      if (!access.allowed) {
+        return res.status(403).json({
+          code: "NOT_ACCEPTING_CLIENTS",
+          message: `${therapist.name} isn't taking on new clients right now. If you're an existing client, use the email you booked with before.`,
+        });
+      }
+    }
 
     if (await rememberedClient(b.clientToken, therapist, booking.clientEmail)) {
       return completeBooking(therapist, booking, res);

@@ -6,6 +6,10 @@ export const NOTE_TEMPLATES = {
   free: ["body"],
 };
 
+// private: the therapist's clinical record, never sent to a client
+// shared:  written for the client; visible in their client space once signed
+export const NOTE_VISIBILITY = ["private", "shared"];
+
 export const NOTE_SECTION_KEYS = [...new Set(Object.values(NOTE_TEMPLATES).flat())];
 
 const sectionsSchema = new mongoose.Schema(
@@ -32,6 +36,12 @@ const sessionNoteSchema = new mongoose.Schema(
       ref: "Session",
       required: true,
     },
+    visibility: {
+      type: String,
+      enum: NOTE_VISIBILITY,
+      default: "private",
+      required: true,
+    },
     template: {
       type: String,
       enum: Object.keys(NOTE_TEMPLATES),
@@ -50,6 +60,10 @@ const sessionNoteSchema = new mongoose.Schema(
     signedAt: {
       type: Date,
     },
+    // When a shared note became visible to the client (it's shared when signed)
+    sharedAt: {
+      type: Date,
+    },
     addenda: [
       {
         text: { type: String, required: true },
@@ -60,8 +74,10 @@ const sessionNoteSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// One note per session
-sessionNoteSchema.index({ session: 1 }, { unique: true });
+// Each session can have one private note and one shared note
+sessionNoteSchema.index({ session: 1, visibility: 1 }, { unique: true, name: "one_note_per_visibility" });
+// Fast lookup for the client portal, which only ever reads shared notes
+sessionNoteSchema.index({ client: 1, visibility: 1, status: 1 });
 sessionNoteSchema.index({ therapist: 1, client: 1, updatedAt: -1 });
 
 export default mongoose.model("SessionNote", sessionNoteSchema);

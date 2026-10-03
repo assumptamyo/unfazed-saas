@@ -7,7 +7,7 @@ const statusStyles = {
   "no-show": "bg-[#FFF3E6] text-[#8A4B00]",
 };
 
-const RecentActivity = ({ sessions }) => {
+const RecentActivity = ({ sessions = [] }) => {
   if (sessions.length === 0) {
     return (
       <div className="bg-white border border-[#EFE6DA] rounded-2xl p-8 text-center">

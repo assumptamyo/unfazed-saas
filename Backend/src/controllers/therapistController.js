@@ -1,5 +1,6 @@
 import Therapist from "../models/Therapist.js";
 import { generateAvailableSlots } from "../services/slotService.js";
+import { canAccess } from "../services/entitlementService.js";
 
 // @desc   Get logged-in therapist's own profile
 // @route  GET /api/therapist/me
@@ -12,15 +13,19 @@ export const getMyProfile = async (req, res) => {
 export const getPublicProfile = async (req, res) => {
   try {
     const therapist = await Therapist.findOne({ slug: req.params.slug }).select(
-      "name slug bio specializations languages photoUrl qualifications yearsOfExperience sessionFee isVerified",
+      "name slug bio specializations languages photoUrl qualifications yearsOfExperience sessionFee isVerified subscriptionTier",
     );
 
     if (!therapist) {
       return res.status(404).json({ message: "Therapist not found" });
     }
 
-    const { isVerified, ...publicFields } = therapist.toObject();
-    return res.status(200).json({ therapist: { ...publicFields, bookingOpen: isVerified } });
+    const { isVerified, subscriptionTier, ...publicFields } = therapist.toObject();
+    // Show the fee only when it will actually be charged (the plan includes online payments)
+    const charges = publicFields.sessionFee > 0 && (await canAccess(therapist, "payments.online")).allowed;
+    return res.status(200).json({
+      therapist: { ...publicFields, sessionFee: charges ? publicFields.sessionFee : 0, bookingOpen: isVerified },
+    });
   } catch (error) {
     console.error("Get public profile error:", error.message);
     return res.status(500).json({ message: "Server error" });
@@ -58,6 +63,7 @@ export const getTherapistSlots = async (req, res) => {
 export const updateMyProfile = async (req, res) => {
   try {
     const allowedFields = [
+      "name",
       "bio",
       "specializations",
       "languages",

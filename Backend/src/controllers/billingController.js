@@ -6,6 +6,7 @@ import { generateReceiptPdf } from "../services/receiptService.js";
 import { sendCancellationToClient } from "../services/emailService.js";
 import { sendPdf } from "./paymentController.js";
 import { toDateKey } from "../utils/dateUtils.js";
+import { canAccess, upgradeRequired } from "../services/entitlementService.js";
 import Session from "../models/Session.js";
 
 const MAX_FEE_RUPEES = 100000;
@@ -89,6 +90,10 @@ export const updateSessionFee = async (req, res) => {
     const rupees = Number(req.body.sessionFee);
     if (!Number.isFinite(rupees) || rupees < 0 || rupees > MAX_FEE_RUPEES || (rupees > 0 && rupees < 1)) {
       return res.status(400).json({ message: `Enter a fee between ₹1 and ₹${MAX_FEE_RUPEES.toLocaleString("en-IN")}, or 0 for free` });
+    }
+    if (rupees > 0) {
+      const access = await canAccess(req.therapist, "payments.online");
+      if (!access.allowed) return upgradeRequired(res, access);
     }
     if (rupees > 0 && !paymentsEnabled()) {
       return res.status(400).json({ message: "Online payments aren't set up yet, so the fee must stay at 0 for now" });

@@ -274,3 +274,18 @@ export const sendVerificationCodeEmail = async (to, name, code, purpose, therapi
     `
   );
 };
+
+// Sent when a therapist signs a shared note. Only says a note exists; the content stays in the client space.
+export const sendSharedNoteEmail = async (to, clientName, therapistName, portalUrl) => {
+  await send(
+    to,
+    `${therapistName} shared a note with you`,
+    `
+      <h2 style="margin:0 0 12px;">Hi ${escapeHtml(clientName)},</h2>
+      <p><strong>${escapeHtml(therapistName)}</strong> shared a note from your session with you.
+      For your privacy, notes are only shown in your client space.</p>
+      ${button(portalUrl, "Read the note")}
+      <p style="color:#A89C8F; font-size:13px;">Keep this email private: the button is your personal link.</p>
+    `
+  );
+};

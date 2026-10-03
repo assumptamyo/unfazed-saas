@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { getNoteForSession, saveNoteDraft } from "../../api/notesApi";
 import { TEMPLATES, SECTIONS, emptySections } from "./noteTemplates";
+import { useEntitlement } from "../../context/entitlementContext";
 
 const AUTOSAVE_DELAY = 1200;
 
@@ -31,7 +32,9 @@ const LiveNotesPanel = ({ sessionId }) => {
   const [loaded, setLoaded] = useState(false);
   const [note, setNote] = useState(null);
   const [previous, setPrevious] = useState(null);
-  const [template, setTemplate] = useState("soap");
+  const { can, promptUpgrade } = useEntitlement();
+  const canStructured = can("notes.structuredTemplates");
+  const [template, setTemplate] = useState(() => (canStructured ? "soap" : "free"));
   const [sections, setSections] = useState(emptySections);
   const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState("idle");
@@ -100,6 +103,8 @@ const LiveNotesPanel = ({ sessionId }) => {
     return () => window.removeEventListener("beforeunload", beforeUnload);
   }, [dirty]);
 
+  const templateLocked = (key) => key !== "free" && !canStructured && note?.template !== key;
+
   const edit = (patch) => {
     edits.current += 1;
     setDirty(true);
@@ -157,7 +162,11 @@ const LiveNotesPanel = ({ sessionId }) => {
               {Object.entries(TEMPLATES).map(([key, t]) => (
                 <button
                   key={key}
-                  onClick={() => key !== template && edit(() => setTemplate(key))}
+                  onClick={() =>
+                    templateLocked(key)
+                      ? promptUpgrade("notes.structuredTemplates", "Unlock SOAP & DAP templates")
+                      : key !== template && edit(() => setTemplate(key))
+                  }
                   className={`text-xs px-3 py-1.5 rounded-full border transition ${
                     template === key
                       ? "bg-[#211A16] border-[#211A16] text-white font-semibold"
@@ -165,6 +174,7 @@ const LiveNotesPanel = ({ sessionId }) => {
                   }`}
                 >
                   {t.label}
+                  {templateLocked(key) && <span className="ml-1" aria-label="locked">🔒</span>}
                 </button>
               ))}
             </div>

@@ -14,6 +14,7 @@ import {
 import { TEMPLATES, SECTIONS, emptySections, countWords } from "../../components/notes/noteTemplates";
 import { apiError, formatLongDate, formatTime } from "../../components/appointments/appointmentUtils";
 import { useToast } from "../../context/toastContext";
+import { useEntitlement } from "../../context/entitlementContext";
 
 const AUTOSAVE_DELAY = 1200;
 
@@ -64,7 +65,10 @@ const NoteEditor = () => {
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [note, setNote] = useState(null);
-  const [template, setTemplate] = useState("soap");
+  const { can, promptUpgrade } = useEntitlement();
+  const canStructured = can("notes.structuredTemplates");
+  // New notes start with SOAP when the plan includes it, otherwise free write
+  const [template, setTemplate] = useState(() => (canStructured ? "soap" : "free"));
   const [sections, setSections] = useState(emptySections);
   const [saveState, setSaveState] = useState("idle");
   const [savedAt, setSavedAt] = useState(null);
@@ -153,6 +157,9 @@ const NoteEditor = () => {
       window.removeEventListener("keydown", onKey);
     };
   }, [dirty, locked, save]);
+
+  // Structured templates need the plan feature, unless this note already uses one
+  const templateLocked = (key) => key !== "free" && !canStructured && note?.template !== key;
 
   const markEdited = () => {
     editCounter.current += 1;
@@ -350,7 +357,9 @@ const NoteEditor = () => {
                 {Object.entries(TEMPLATES).map(([key, t]) => (
                   <button
                     key={key}
-                    onClick={() => changeTemplate(key)}
+                    onClick={() =>
+                      templateLocked(key) ? promptUpgrade("notes.structuredTemplates", "Unlock SOAP & DAP templates") : changeTemplate(key)
+                    }
                     title={t.description}
                     className={`text-sm px-4 py-2 rounded-full border transition ${
                       template === key
@@ -359,6 +368,7 @@ const NoteEditor = () => {
                     }`}
                   >
                     {t.label}
+                    {templateLocked(key) && <span className="ml-1" aria-label="locked">🔒</span>}
                   </button>
                 ))}
                 <span className="text-xs text-[#A89C8F] ml-1 hidden sm:inline">{TEMPLATES[template].description}</span>

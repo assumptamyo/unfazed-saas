@@ -4,6 +4,7 @@ import axiosInstance from "../../api/axiosInstance";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import VerifyBanner from "../common/VerifyBanner";
+import { onProfileUpdate } from "../../utils/profileEvents";
 
 const DashboardLayout = ({ children }) => {
   const [profile, setProfile] = useState(null);
@@ -26,6 +27,9 @@ const DashboardLayout = ({ children }) => {
     };
     load();
   }, []);
+
+  // Show a new name or photo in the top bar as soon as the profile is saved
+  useEffect(() => onProfileUpdate((therapist) => setProfile((prev) => ({ ...prev, ...therapist }))), []);
 
   return (
     <div className="flex min-h-screen bg-[#F9F6F0]">
